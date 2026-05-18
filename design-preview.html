@@ -1,0 +1,1059 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>테니스장 관리 — 디자인 프리뷰</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg:            #0a0a0a;
+      --surface:       #141414;
+      --surface-2:     #1c1c1c;
+      --border:        #222222;
+      --border-hover:  #333333;
+      --text:          #ffffff;
+      --text-2:        #aaaaaa;
+      --text-3:        #666666;
+      --volta:         #c8f000;
+      --volta-muted:   rgba(200,240,0,0.12);
+      --danger:        #ff4444;
+      --success:       #34d399;
+      --warning:       #fbbf24;
+      --radius:        12px;
+      --radius-sm:     8px;
+    }
+
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: -apple-system, 'Helvetica Neue', sans-serif;
+      font-size: 14px;
+      line-height: 1.5;
+      min-height: 100vh;
+    }
+
+    /* ── 화면 탭 네비게이션 ── */
+    .tab-nav {
+      display: flex;
+      gap: 2px;
+      padding: 12px 16px;
+      background: #0d0d0d;
+      border-bottom: 1px solid var(--border);
+      overflow-x: auto;
+      scrollbar-width: none;
+      position: sticky;
+      top: 0;
+      z-index: 100;
+    }
+    .tab-nav::-webkit-scrollbar { display: none; }
+    .tab-btn {
+      flex-shrink: 0;
+      padding: 6px 14px;
+      border-radius: 6px;
+      border: none;
+      background: transparent;
+      color: var(--text-3);
+      font-size: 12px;
+      font-weight: 500;
+      cursor: pointer;
+      transition: all 0.15s;
+      white-space: nowrap;
+    }
+    .tab-btn:hover { color: var(--text-2); background: var(--surface); }
+    .tab-btn.active { background: var(--surface-2); color: var(--text); }
+
+    /* ── 화면 컨테이너 ── */
+    .screen { display: none; max-width: 390px; margin: 0 auto; min-height: calc(100vh - 50px); }
+    .screen.active { display: flex; flex-direction: column; }
+
+    /* ── 공통 헤더 ── */
+    .app-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 20px 20px 16px;
+    }
+    .app-header .logo {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .app-header .logo-dot {
+      width: 8px; height: 8px;
+      border-radius: 50%;
+      background: var(--volta);
+    }
+    .app-header .logo-text {
+      font-size: 15px;
+      font-weight: 600;
+      letter-spacing: -0.3px;
+    }
+    .app-header .avatar {
+      width: 32px; height: 32px;
+      border-radius: 50%;
+      background: var(--surface-2);
+      border: 1px solid var(--border);
+      display: flex; align-items: center; justify-content: center;
+      font-size: 12px;
+      color: var(--text-2);
+    }
+    .back-btn {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      color: var(--text-2);
+      font-size: 13px;
+      cursor: pointer;
+      background: none;
+      border: none;
+      padding: 0;
+    }
+    .back-btn svg { width: 16px; height: 16px; }
+
+    /* ── 공통 섹션 ── */
+    .section { padding: 0 20px 24px; }
+    .section-label {
+      font-size: 11px;
+      font-weight: 600;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      color: var(--text-3);
+      margin-bottom: 12px;
+    }
+
+    /* ── 카드 ── */
+    .card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      transition: border-color 0.15s;
+    }
+    .card:hover { border-color: var(--border-hover); }
+
+    /* ── 레슨 아이템 ── */
+    .lesson-item {
+      padding: 16px;
+      margin-bottom: 10px;
+    }
+    .lesson-item-top {
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      margin-bottom: 12px;
+    }
+    .lesson-time {
+      font-size: 13px;
+      font-weight: 600;
+      color: var(--text);
+    }
+    .lesson-meta {
+      font-size: 12px;
+      color: var(--text-2);
+      margin-top: 2px;
+    }
+    .badge {
+      padding: 3px 8px;
+      border-radius: 100px;
+      font-size: 11px;
+      font-weight: 500;
+    }
+    .badge-scheduled { background: rgba(255,255,255,0.07); color: var(--text-2); }
+    .badge-active    { background: var(--volta-muted); color: var(--volta); }
+    .badge-done      { background: rgba(52,211,153,0.1); color: var(--success); }
+    .badge-cancelled { background: rgba(255,68,68,0.1); color: var(--danger); }
+
+    .lesson-divider { height: 1px; background: var(--border); margin: 12px 0; }
+
+    .lesson-member {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+    .member-avatar {
+      width: 28px; height: 28px;
+      border-radius: 50%;
+      background: var(--surface-2);
+      border: 1px solid var(--border);
+      display: flex; align-items: center; justify-content: center;
+      font-size: 11px;
+      color: var(--text-2);
+      flex-shrink: 0;
+    }
+    .member-name { font-size: 13px; font-weight: 500; }
+    .member-sub  { font-size: 11px; color: var(--text-3); }
+
+    /* ── 버튼 ── */
+    .btn-primary {
+      width: 100%;
+      padding: 13px;
+      border-radius: var(--radius-sm);
+      border: none;
+      background: var(--volta);
+      color: #000;
+      font-size: 14px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: opacity 0.15s;
+      letter-spacing: -0.2px;
+    }
+    .btn-primary:hover { opacity: 0.88; }
+
+    .btn-secondary {
+      width: 100%;
+      padding: 12px;
+      border-radius: var(--radius-sm);
+      border: 1px solid var(--border);
+      background: var(--surface-2);
+      color: var(--text);
+      font-size: 14px;
+      font-weight: 500;
+      cursor: pointer;
+      transition: border-color 0.15s;
+    }
+    .btn-secondary:hover { border-color: var(--border-hover); }
+
+    .btn-danger {
+      width: 100%;
+      padding: 12px;
+      border-radius: var(--radius-sm);
+      border: 1px solid rgba(255,68,68,0.3);
+      background: rgba(255,68,68,0.08);
+      color: var(--danger);
+      font-size: 14px;
+      font-weight: 500;
+      cursor: pointer;
+    }
+
+    .btn-sm {
+      padding: 7px 14px;
+      border-radius: var(--radius-sm);
+      border: none;
+      font-size: 12px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: opacity 0.15s;
+    }
+    .btn-sm-volta { background: var(--volta); color: #000; }
+    .btn-sm-ghost { background: var(--surface-2); color: var(--text-2); border: 1px solid var(--border); }
+
+    /* ── 인풋 ── */
+    .input-group { margin-bottom: 14px; }
+    .input-label { font-size: 12px; color: var(--text-2); margin-bottom: 6px; display: block; }
+    .input {
+      width: 100%;
+      padding: 11px 14px;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm);
+      color: var(--text);
+      font-size: 14px;
+      outline: none;
+      transition: border-color 0.15s;
+    }
+    .input:focus { border-color: var(--volta); }
+    .input::placeholder { color: var(--text-3); }
+    .textarea {
+      width: 100%;
+      padding: 11px 14px;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm);
+      color: var(--text);
+      font-size: 13px;
+      outline: none;
+      resize: none;
+      transition: border-color 0.15s;
+      font-family: inherit;
+      line-height: 1.5;
+    }
+    .textarea:focus { border-color: var(--volta); }
+    .textarea::placeholder { color: var(--text-3); }
+
+    /* ── 날짜 헤더 ── */
+    .date-header { padding: 8px 20px 4px; }
+    .date-today { font-size: 22px; font-weight: 700; letter-spacing: -0.5px; }
+    .date-sub   { font-size: 13px; color: var(--text-2); margin-top: 2px; }
+
+    /* ── 영상 플레이어 목업 ── */
+    .video-player {
+      width: 100%;
+      aspect-ratio: 16/9;
+      background: #0d0d0d;
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      position: relative;
+      overflow: hidden;
+      margin-bottom: 12px;
+    }
+    .video-play-btn {
+      width: 48px; height: 48px;
+      border-radius: 50%;
+      background: rgba(200,240,0,0.15);
+      border: 1px solid rgba(200,240,0,0.3);
+      display: flex; align-items: center; justify-content: center;
+    }
+    .video-play-btn svg { width: 20px; height: 20px; fill: var(--volta); margin-left: 3px; }
+    .video-time {
+      position: absolute;
+      bottom: 10px; right: 12px;
+      font-size: 11px;
+      color: var(--text-2);
+      background: rgba(0,0,0,0.6);
+      padding: 2px 6px;
+      border-radius: 4px;
+    }
+    .video-progress {
+      position: absolute;
+      bottom: 0; left: 0; right: 0;
+      height: 3px;
+      background: var(--border);
+    }
+    .video-progress-fill {
+      height: 100%;
+      width: 38%;
+      background: var(--volta);
+    }
+
+    /* ── 타임스탬프 댓글 ── */
+    .timestamp-comment {
+      display: flex;
+      gap: 10px;
+      padding: 12px 0;
+      border-bottom: 1px solid var(--border);
+    }
+    .timestamp-comment:last-child { border-bottom: none; }
+    .ts-badge {
+      flex-shrink: 0;
+      padding: 2px 8px;
+      background: var(--volta-muted);
+      color: var(--volta);
+      border-radius: 4px;
+      font-size: 11px;
+      font-weight: 600;
+      font-variant-numeric: tabular-nums;
+      height: fit-content;
+      margin-top: 1px;
+    }
+    .ts-content { flex: 1; }
+    .ts-author  { font-size: 11px; color: var(--text-3); margin-bottom: 3px; }
+    .ts-text    { font-size: 13px; color: var(--text); line-height: 1.5; }
+
+    /* ── 일지 아이템 ── */
+    .journal-item {
+      display: flex;
+      align-items: flex-start;
+      gap: 12px;
+      padding: 14px;
+      margin-bottom: 8px;
+    }
+    .journal-type-dot {
+      width: 8px; height: 8px;
+      border-radius: 50%;
+      margin-top: 5px;
+      flex-shrink: 0;
+    }
+    .dot-lesson   { background: var(--volta); }
+    .dot-practice { background: #60a5fa; }
+    .dot-match    { background: var(--danger); }
+
+    /* ── 대시보드 스탯 ── */
+    .stats-row {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 10px;
+      margin-bottom: 20px;
+      padding: 0 20px;
+    }
+    .stat-item {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm);
+      padding: 14px 12px;
+      text-align: center;
+    }
+    .stat-value { font-size: 22px; font-weight: 700; letter-spacing: -0.5px; }
+    .stat-label { font-size: 11px; color: var(--text-3); margin-top: 2px; }
+
+    /* ── 코치 탭 ── */
+    .coach-tabs {
+      display: flex;
+      gap: 6px;
+      padding: 0 20px;
+      margin-bottom: 16px;
+      overflow-x: auto;
+      scrollbar-width: none;
+    }
+    .coach-tab {
+      flex-shrink: 0;
+      padding: 5px 12px;
+      border-radius: 100px;
+      border: 1px solid var(--border);
+      background: transparent;
+      color: var(--text-2);
+      font-size: 12px;
+      cursor: pointer;
+      transition: all 0.15s;
+    }
+    .coach-tab.active {
+      background: var(--surface-2);
+      border-color: var(--border-hover);
+      color: var(--text);
+    }
+
+    /* ── 캘린더 행 ── */
+    .schedule-row {
+      display: flex;
+      align-items: stretch;
+      gap: 10px;
+      padding: 0 20px;
+      margin-bottom: 8px;
+    }
+    .schedule-time-col {
+      width: 44px;
+      flex-shrink: 0;
+      display: flex;
+      align-items: flex-start;
+      padding-top: 12px;
+      font-size: 11px;
+      color: var(--text-3);
+      font-variant-numeric: tabular-nums;
+    }
+    .schedule-block {
+      flex: 1;
+      padding: 12px 14px;
+      border-radius: var(--radius-sm);
+    }
+    .schedule-block.has-lesson {
+      background: var(--surface);
+      border: 1px solid var(--border);
+    }
+    .schedule-block.empty {
+      background: transparent;
+      border: 1px dashed #1a1a1a;
+    }
+
+    /* ── 로그인 화면 ── */
+    .login-container {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      padding: 40px 24px;
+      gap: 0;
+    }
+    .login-logo {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 12px;
+      margin-bottom: 40px;
+    }
+    .login-logo-mark {
+      width: 52px; height: 52px;
+      border-radius: 14px;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      display: flex; align-items: center; justify-content: center;
+    }
+    .login-logo-ball {
+      width: 26px; height: 26px;
+      border-radius: 50%;
+      background: var(--volta);
+      position: relative;
+    }
+    .login-logo-ball::after {
+      content: '';
+      position: absolute;
+      top: 7px; left: 0; right: 0;
+      height: 1.5px;
+      background: rgba(0,0,0,0.25);
+      border-radius: 2px;
+    }
+    .login-title { font-size: 20px; font-weight: 700; letter-spacing: -0.4px; }
+    .login-sub   { font-size: 13px; color: var(--text-3); margin-top: 4px; }
+
+    .login-card {
+      width: 100%;
+      padding: 24px;
+      margin-bottom: 16px;
+    }
+
+    .login-hint {
+      font-size: 12px;
+      color: var(--text-3);
+      text-align: center;
+    }
+    .login-hint span { color: var(--text-2); }
+
+    /* ── 바텀 바 ── */
+    .bottom-bar {
+      padding: 16px 20px 28px;
+      border-top: 1px solid var(--border);
+      background: var(--bg);
+    }
+
+    /* ── 알림 뱃지 ── */
+    .notif-dot {
+      width: 6px; height: 6px;
+      border-radius: 50%;
+      background: var(--volta);
+      display: inline-block;
+      margin-left: 4px;
+      vertical-align: middle;
+    }
+
+    /* ── 빈 상태 ── */
+    .empty-state {
+      padding: 32px 20px;
+      text-align: center;
+      color: var(--text-3);
+      font-size: 13px;
+    }
+
+    /* ── 유틸 ── */
+    .flex         { display: flex; }
+    .items-center { align-items: center; }
+    .justify-between { justify-content: space-between; }
+    .gap-8  { gap: 8px; }
+    .gap-10 { gap: 10px; }
+    .mt-6   { margin-top: 6px; }
+    .mt-12  { margin-top: 12px; }
+    .mt-16  { margin-top: 16px; }
+    .mb-10  { margin-bottom: 10px; }
+    .text-volta { color: var(--volta); }
+    .text-2 { color: var(--text-2); font-size: 12px; }
+    .fw-600 { font-weight: 600; }
+
+    /* ── 화면 레이블 (프리뷰 전용) ── */
+    .screen-label {
+      font-size: 10px;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      color: var(--text-3);
+      padding: 8px 20px 0;
+    }
+  </style>
+</head>
+<body>
+
+<!-- 탭 네비게이션 -->
+<nav class="tab-nav">
+  <button class="tab-btn active" onclick="showScreen('login')">로그인</button>
+  <button class="tab-btn" onclick="showScreen('coach')">코치 홈</button>
+  <button class="tab-btn" onclick="showScreen('lesson-detail')">레슨 상세</button>
+  <button class="tab-btn" onclick="showScreen('member')">회원 홈</button>
+  <button class="tab-btn" onclick="showScreen('owner')">대표 대시보드</button>
+</nav>
+
+<!-- ════════════════════════════════════════ -->
+<!-- 화면 1: 로그인                          -->
+<!-- ════════════════════════════════════════ -->
+<div id="screen-login" class="screen active">
+  <div class="login-container">
+    <div class="login-logo">
+      <div class="login-logo-mark">
+        <div class="login-logo-ball"></div>
+      </div>
+      <div>
+        <div class="login-title">테니스 관리</div>
+        <div class="login-sub">코치에게 초대 이메일을 받으셨나요?</div>
+      </div>
+    </div>
+
+    <div class="card login-card">
+      <div class="input-group">
+        <label class="input-label">이메일 주소</label>
+        <input class="input" type="email" placeholder="your@email.com" value="">
+      </div>
+      <button class="btn-primary">매직 링크 발송</button>
+    </div>
+
+    <div class="login-hint">
+      링크를 받으셨다면 <span>이메일을 확인해주세요.</span><br>
+      링크는 24시간 동안 유효합니다.
+    </div>
+  </div>
+</div>
+
+<!-- ════════════════════════════════════════ -->
+<!-- 화면 2: 코치 홈                         -->
+<!-- ════════════════════════════════════════ -->
+<div id="screen-coach" class="screen">
+  <div class="app-header">
+    <div class="logo">
+      <div class="logo-dot"></div>
+      <span class="logo-text">테니스 관리</span>
+    </div>
+    <div class="avatar">김</div>
+  </div>
+
+  <div class="date-header">
+    <div class="date-today">오늘 · 5월 18일</div>
+    <div class="date-sub">월요일 &nbsp;·&nbsp; 레슨 4건</div>
+  </div>
+
+  <div class="section" style="margin-top: 20px;">
+    <div class="section-label">진행 중</div>
+
+    <!-- 진행 중 레슨 -->
+    <div class="card lesson-item" style="border-color: rgba(200,240,0,0.2);">
+      <div class="lesson-item-top">
+        <div>
+          <div class="lesson-time">10:00 — 11:00</div>
+          <div class="lesson-meta">코트 A</div>
+        </div>
+        <span class="badge badge-active">진행 중</span>
+      </div>
+      <div class="lesson-divider"></div>
+      <div class="flex items-center justify-between">
+        <div class="lesson-member">
+          <div class="member-avatar">이</div>
+          <div>
+            <div class="member-name">이수진</div>
+            <div class="member-sub">중급 · 주 2회</div>
+          </div>
+        </div>
+        <button class="btn-sm btn-sm-ghost">레슨 종료</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="section">
+    <div class="section-label">예정</div>
+
+    <!-- 예정 레슨 1 -->
+    <div class="card lesson-item">
+      <div class="lesson-item-top">
+        <div>
+          <div class="lesson-time">11:00 — 12:00</div>
+          <div class="lesson-meta">코트 B</div>
+        </div>
+        <span class="badge badge-scheduled">예정</span>
+      </div>
+      <div class="lesson-divider"></div>
+      <div class="flex items-center justify-between">
+        <div class="lesson-member">
+          <div class="member-avatar">박</div>
+          <div>
+            <div class="member-name">박준영</div>
+            <div class="member-sub">초급 · 주 3회</div>
+          </div>
+        </div>
+        <button class="btn-sm btn-sm-volta">레슨 시작</button>
+      </div>
+    </div>
+
+    <!-- 예정 레슨 2 -->
+    <div class="card lesson-item">
+      <div class="lesson-item-top">
+        <div>
+          <div class="lesson-time">14:00 — 15:00</div>
+          <div class="lesson-meta">코트 A</div>
+        </div>
+        <span class="badge badge-scheduled">예정</span>
+      </div>
+      <div class="lesson-divider"></div>
+      <div class="flex items-center justify-between">
+        <div class="lesson-member">
+          <div class="member-avatar">최</div>
+          <div>
+            <div class="member-name">최민서</div>
+            <div class="member-sub">고급 · 주 1회</div>
+          </div>
+        </div>
+        <button class="btn-sm btn-sm-volta">레슨 시작</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="section">
+    <div class="section-label">완료</div>
+
+    <div class="card lesson-item">
+      <div class="lesson-item-top">
+        <div>
+          <div class="lesson-time">09:00 — 10:00</div>
+          <div class="lesson-meta">코트 C</div>
+        </div>
+        <span class="badge badge-done">완료</span>
+      </div>
+      <div class="lesson-divider"></div>
+      <div class="flex items-center justify-between">
+        <div class="lesson-member">
+          <div class="member-avatar">정</div>
+          <div>
+            <div class="member-name">정하늘</div>
+            <div class="member-sub">중급 · 주 2회</div>
+          </div>
+        </div>
+        <button class="btn-sm btn-sm-ghost" onclick="showScreen('lesson-detail')">피드백 보기</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ════════════════════════════════════════ -->
+<!-- 화면 3: 레슨 상세 (피드백 + 영상)      -->
+<!-- ════════════════════════════════════════ -->
+<div id="screen-lesson-detail" class="screen">
+  <div class="app-header">
+    <button class="back-btn" onclick="showScreen('coach')">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <path d="M19 12H5M12 19l-7-7 7-7"/>
+      </svg>
+      돌아가기
+    </button>
+    <span class="badge badge-done">완료</span>
+  </div>
+
+  <!-- 레슨 정보 -->
+  <div class="section">
+    <div class="card" style="padding: 16px;">
+      <div class="flex items-center justify-between mb-10">
+        <div>
+          <div style="font-size: 16px; font-weight: 600; letter-spacing: -0.3px;">이수진 · 레슨</div>
+          <div class="text-2 mt-6">2026년 5월 18일 &nbsp;10:00 — 11:00 &nbsp;·&nbsp; 코트 A</div>
+        </div>
+        <div class="member-avatar" style="width: 36px; height: 36px; font-size: 14px;">이</div>
+      </div>
+      <div style="height: 1px; background: var(--border); margin: 12px 0;"></div>
+      <div class="flex gap-10" style="font-size: 12px; color: var(--text-3);">
+        <span>시작 <span style="color: var(--text-2);">10:03</span></span>
+        <span>·</span>
+        <span>종료 <span style="color: var(--text-2);">10:58</span></span>
+        <span>·</span>
+        <span>실제 <span style="color: var(--volta); font-weight: 600;">55분</span></span>
+      </div>
+    </div>
+  </div>
+
+  <!-- 코치 텍스트 피드백 -->
+  <div class="section">
+    <div class="section-label">코치 피드백</div>
+    <div class="card" style="padding: 16px;">
+      <div style="font-size: 13px; line-height: 1.7; color: var(--text-2);">
+        오늘 백핸드 폼이 많이 개선됐습니다. 다음 레슨까지 팔꿈치 높이를 의식하면서 연습해 오세요.
+        서비스는 토스가 아직 불안정하니 매일 10분씩 반복 연습 권장합니다.
+      </div>
+      <div style="margin-top: 12px; font-size: 11px; color: var(--text-3);">코치 김민준 · 오늘 11:05</div>
+    </div>
+    <div style="margin-top: 10px;">
+      <textarea class="textarea" rows="3" placeholder="피드백을 작성하세요..."></textarea>
+      <div style="text-align: right; margin-top: 8px;">
+        <button class="btn-sm btn-sm-volta">저장</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 영상 + 타임스탬프 -->
+  <div class="section">
+    <div class="section-label">영상 피드백 <span class="notif-dot"></span></div>
+
+    <!-- 영상 플레이어 -->
+    <div class="video-player">
+      <div class="video-play-btn">
+        <svg viewBox="0 0 24 24"><polygon points="5,3 19,12 5,21"/></svg>
+      </div>
+      <div class="video-time">2:34</div>
+      <div class="video-progress">
+        <div class="video-progress-fill"></div>
+      </div>
+    </div>
+
+    <!-- 타임스탬프 댓글 목록 -->
+    <div class="card" style="padding: 4px 14px;">
+      <div class="timestamp-comment">
+        <span class="ts-badge">0:12</span>
+        <div class="ts-content">
+          <div class="ts-author">코치 김민준</div>
+          <div class="ts-text">임팩트 직전 팔꿈치가 들리고 있어요. 조금 더 내려주세요.</div>
+        </div>
+      </div>
+      <div class="timestamp-comment">
+        <span class="ts-badge">1:05</span>
+        <div class="ts-content">
+          <div class="ts-author">코치 김민준</div>
+          <div class="ts-text">여기서 체중 이동이 잘 됐습니다. 이 느낌 기억하세요!</div>
+        </div>
+      </div>
+      <div class="timestamp-comment">
+        <span class="ts-badge">1:48</span>
+        <div class="ts-content">
+          <div class="ts-author">이수진 (회원)</div>
+          <div class="ts-text">이 부분이 어색한데 어떻게 해야 할까요?</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 타임스탬프 댓글 입력 -->
+    <div class="card" style="padding: 14px; margin-top: 10px;">
+      <div class="flex items-center gap-8 mb-10" style="font-size: 12px; color: var(--text-2);">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/>
+        </svg>
+        현재 재생 위치 &nbsp;<span class="text-volta fw-600">1:03</span>에 댓글 달기
+      </div>
+      <textarea class="textarea" rows="2" placeholder="이 구간에 대한 피드백을 작성하세요..."></textarea>
+      <div style="text-align: right; margin-top: 8px;">
+        <button class="btn-sm btn-sm-volta">등록</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ════════════════════════════════════════ -->
+<!-- 화면 4: 회원 홈                         -->
+<!-- ════════════════════════════════════════ -->
+<div id="screen-member" class="screen">
+  <div class="app-header">
+    <div class="logo">
+      <div class="logo-dot"></div>
+      <span class="logo-text">테니스 관리</span>
+    </div>
+    <div class="avatar">이</div>
+  </div>
+
+  <!-- 다음 레슨 -->
+  <div class="section" style="margin-top: 8px;">
+    <div class="section-label">다음 레슨</div>
+    <div class="card" style="padding: 18px; border-color: rgba(200,240,0,0.15);">
+      <div class="flex items-center justify-between">
+        <div>
+          <div style="font-size: 18px; font-weight: 700; letter-spacing: -0.3px;">내일 10:00</div>
+          <div class="text-2 mt-6">코치 김민준 · 코트 A · 60분</div>
+        </div>
+        <div style="text-align: right;">
+          <div style="font-size: 11px; color: var(--text-3);">5월 19일 화요일</div>
+          <div style="font-size: 11px; color: var(--volta); margin-top: 4px; font-weight: 500;">D-1</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 지난 레슨 -->
+  <div class="section">
+    <div class="section-label">지난 레슨</div>
+
+    <div class="card lesson-item">
+      <div class="lesson-item-top">
+        <div>
+          <div class="lesson-time">5월 18일 10:00</div>
+          <div class="lesson-meta">코치 김민준 · 코트 A</div>
+        </div>
+        <span class="badge badge-done">완료</span>
+      </div>
+      <div class="lesson-divider"></div>
+      <div class="flex items-center justify-between">
+        <div style="font-size: 12px; color: var(--text-3);">피드백 1개 · 영상 1개</div>
+        <button class="btn-sm btn-sm-ghost" onclick="showScreen('lesson-detail')">확인</button>
+      </div>
+    </div>
+
+    <div class="card lesson-item">
+      <div class="lesson-item-top">
+        <div>
+          <div class="lesson-time">5월 15일 10:00</div>
+          <div class="lesson-meta">코치 김민준 · 코트 A</div>
+        </div>
+        <span class="badge badge-done">완료</span>
+      </div>
+      <div class="lesson-divider"></div>
+      <div class="flex items-center justify-between">
+        <div style="font-size: 12px; color: var(--text-3);">피드백 1개</div>
+        <button class="btn-sm btn-sm-ghost">확인</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 테니스 일지 -->
+  <div class="section">
+    <div class="flex items-center justify-between" style="margin-bottom: 12px;">
+      <div class="section-label" style="margin-bottom: 0;">테니스 일지</div>
+      <button class="btn-sm btn-sm-ghost">+ 기록 추가</button>
+    </div>
+
+    <div class="card journal-item">
+      <div class="journal-type-dot dot-lesson"></div>
+      <div style="flex: 1;">
+        <div class="flex items-center justify-between mb-10">
+          <span style="font-size: 12px; font-weight: 600; color: var(--volta);">레슨</span>
+          <span style="font-size: 11px; color: var(--text-3);">5월 18일</span>
+        </div>
+        <div style="font-size: 13px; color: var(--text-2);">백핸드 집중 레슨. 팔꿈치 교정 중.</div>
+      </div>
+    </div>
+
+    <div class="card journal-item">
+      <div class="journal-type-dot dot-practice"></div>
+      <div style="flex: 1;">
+        <div class="flex items-center justify-between mb-10">
+          <span style="font-size: 12px; font-weight: 600; color: #60a5fa;">자율 연습</span>
+          <span style="font-size: 11px; color: var(--text-3);">5월 16일</span>
+        </div>
+        <div style="font-size: 13px; color: var(--text-2);">서비스 토스 30분 반복. 점점 안정됨.</div>
+      </div>
+    </div>
+
+    <div class="card journal-item">
+      <div class="journal-type-dot dot-match"></div>
+      <div style="flex: 1;">
+        <div class="flex items-center justify-between mb-10">
+          <span style="font-size: 12px; font-weight: 600; color: var(--danger);">경기</span>
+          <span style="font-size: 11px; color: var(--text-3);">5월 14일</span>
+        </div>
+        <div style="font-size: 13px; color: var(--text-2);">클럽 내부 대회 6-4 승. 백핸드 실수 多.</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ════════════════════════════════════════ -->
+<!-- 화면 5: 대표 대시보드                   -->
+<!-- ════════════════════════════════════════ -->
+<div id="screen-owner" class="screen">
+  <div class="app-header">
+    <div class="logo">
+      <div class="logo-dot"></div>
+      <span class="logo-text">테니스 관리</span>
+    </div>
+    <div class="avatar">대</div>
+  </div>
+
+  <!-- 이번달 통계 -->
+  <div class="date-header">
+    <div class="date-today">5월 현황</div>
+    <div class="date-sub">2026년 · 전체 코치</div>
+  </div>
+
+  <div style="margin-top: 16px;">
+    <div class="stats-row">
+      <div class="stat-item">
+        <div class="stat-value">84</div>
+        <div class="stat-label">이번달 레슨</div>
+      </div>
+      <div class="stat-item">
+        <div class="stat-value text-volta">3</div>
+        <div class="stat-label">코치</div>
+      </div>
+      <div class="stat-item">
+        <div class="stat-value">21</div>
+        <div class="stat-label">회원</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 코치 필터 -->
+  <div class="coach-tabs">
+    <button class="coach-tab active">전체</button>
+    <button class="coach-tab">김민준</button>
+    <button class="coach-tab">박서연</button>
+    <button class="coach-tab">최태호</button>
+  </div>
+
+  <!-- 오늘 일정 -->
+  <div class="section">
+    <div class="section-label">오늘 · 5월 18일 (월)</div>
+
+    <div class="schedule-row">
+      <div class="schedule-time-col">09:00</div>
+      <div class="schedule-block has-lesson">
+        <div class="flex items-center justify-between">
+          <div>
+            <div style="font-size: 12px; font-weight: 600;">정하늘</div>
+            <div style="font-size: 11px; color: var(--text-3); margin-top: 2px;">코치 김민준 · 코트 C</div>
+          </div>
+          <span class="badge badge-done" style="font-size: 10px;">완료</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="schedule-row">
+      <div class="schedule-time-col">10:00</div>
+      <div class="schedule-block has-lesson" style="border-color: rgba(200,240,0,0.2);">
+        <div class="flex items-center justify-between">
+          <div>
+            <div style="font-size: 12px; font-weight: 600;">이수진</div>
+            <div style="font-size: 11px; color: var(--text-3); margin-top: 2px;">코치 김민준 · 코트 A</div>
+          </div>
+          <span class="badge badge-active" style="font-size: 10px;">진행 중</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="schedule-row">
+      <div class="schedule-time-col">10:00</div>
+      <div class="schedule-block has-lesson">
+        <div class="flex items-center justify-between">
+          <div>
+            <div style="font-size: 12px; font-weight: 600;">김지호</div>
+            <div style="font-size: 11px; color: var(--text-3); margin-top: 2px;">코치 박서연 · 코트 B</div>
+          </div>
+          <span class="badge badge-done" style="font-size: 10px;">완료</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="schedule-row">
+      <div class="schedule-time-col">11:00</div>
+      <div class="schedule-block has-lesson">
+        <div class="flex items-center justify-between">
+          <div>
+            <div style="font-size: 12px; font-weight: 600;">박준영</div>
+            <div style="font-size: 11px; color: var(--text-3); margin-top: 2px;">코치 김민준 · 코트 B</div>
+          </div>
+          <span class="badge badge-scheduled" style="font-size: 10px;">예정</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="schedule-row">
+      <div class="schedule-time-col">13:00</div>
+      <div class="schedule-block empty"></div>
+    </div>
+
+    <div class="schedule-row">
+      <div class="schedule-time-col">14:00</div>
+      <div class="schedule-block has-lesson">
+        <div class="flex items-center justify-between">
+          <div>
+            <div style="font-size: 12px; font-weight: 600;">최민서</div>
+            <div style="font-size: 11px; color: var(--text-3); margin-top: 2px;">코치 김민준 · 코트 A</div>
+          </div>
+          <span class="badge badge-scheduled" style="font-size: 10px;">예정</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="schedule-row">
+      <div class="schedule-time-col">15:00</div>
+      <div class="schedule-block has-lesson">
+        <div class="flex items-center justify-between">
+          <div>
+            <div style="font-size: 12px; font-weight: 600;">강유진</div>
+            <div style="font-size: 11px; color: var(--text-3); margin-top: 2px;">코치 최태호 · 코트 C</div>
+          </div>
+          <span class="badge badge-scheduled" style="font-size: 10px;">예정</span>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+  function showScreen(name) {
+    document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
+    document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+    document.getElementById('screen-' + name).classList.add('active');
+    const tabs = {'login':0,'coach':1,'lesson-detail':2,'member':3,'owner':4};
+    document.querySelectorAll('.tab-btn')[tabs[name]].classList.add('active');
+    window.scrollTo(0, 0);
+  }
+</script>
+</body>
+</html>
