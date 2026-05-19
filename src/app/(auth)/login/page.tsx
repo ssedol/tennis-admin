@@ -3,6 +3,8 @@
 import { useState } from 'react'
 import { createClient } from '@/lib/supabase/client'
 
+const IS_DEV = process.env.NODE_ENV === 'development'
+
 export default function LoginPage() {
   const [email, setEmail] = useState('')
   const [sent, setSent] = useState(false)
@@ -105,6 +107,28 @@ export default function LoginPage() {
         초대 이메일을 받지 못하셨나요?<br />
         코치 또는 관리자에게 문의해주세요.
       </p>
+
+      {/* 개발 환경 전용 테스트 로그인 */}
+      {IS_DEV && (
+        <div className="w-full max-w-sm mt-8">
+          <div className="flex items-center gap-3 mb-3">
+            <div className="flex-1 h-px bg-border" />
+            <span className="text-xs text-muted-foreground">개발 테스트</span>
+            <div className="flex-1 h-px bg-border" />
+          </div>
+          <div className="grid grid-cols-3 gap-2">
+            {(['OWNER', 'COACH', 'MEMBER'] as const).map((role) => (
+              <a
+                key={role}
+                href={`/api/dev/login?role=${role}`}
+                className="py-2 text-center text-xs font-medium rounded-lg bg-card border border-border text-muted-foreground hover:text-foreground hover:border-border/80 transition-colors"
+              >
+                {role === 'OWNER' ? '대표' : role === 'COACH' ? '코치' : '회원'}
+              </a>
+            ))}
+          </div>
+        </div>
+      )}
     </main>
   )
 }
