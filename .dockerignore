@@ -1,0 +1,11 @@
+node_modules
+.next
+.git
+.cursor
+MD
+design-preview.html
+*.md
+!README.md
+.env*.local
+npm-debug.log*
+.DS_Store
