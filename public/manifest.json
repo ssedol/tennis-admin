@@ -1,0 +1,10 @@
+{
+  "name": "테니스 관리",
+  "short_name": "테니스",
+  "description": "테니스 레슨 일정 및 피드백 관리",
+  "start_url": "/login",
+  "display": "standalone",
+  "background_color": "#0a0a0a",
+  "theme_color": "#0a0a0a",
+  "lang": "ko"
+}
