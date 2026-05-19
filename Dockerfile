@@ -12,13 +12,13 @@ RUN npm ci
 # ── Development (hot reload) ──────────────────────────────────
 FROM base AS development
 ENV NODE_ENV=development
-ENV PORT=9999
+ENV PORT=8899
 ENV HOSTNAME=0.0.0.0
 
 COPY package.json package-lock.json ./
 RUN npm ci
 
-EXPOSE 9999
+EXPOSE 8899
 CMD ["npm", "run", "dev"]
 
 # ── Production build ──────────────────────────────────────────
@@ -30,7 +30,7 @@ RUN npm run build
 
 FROM base AS production
 ENV NODE_ENV=production
-ENV PORT=9999
+ENV PORT=8899
 ENV HOSTNAME=0.0.0.0
 
 RUN addgroup --system --gid 1001 nodejs \
@@ -41,5 +41,5 @@ COPY --from=builder --chown=nextjs:nodejs /app/.next/standalone ./
 COPY --from=builder --chown=nextjs:nodejs /app/.next/static ./.next/static
 
 USER nextjs
-EXPOSE 9999
+EXPOSE 8899
 CMD ["node", "server.js"]
