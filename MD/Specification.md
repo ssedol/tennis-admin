@@ -61,9 +61,10 @@
 ## 5. 인프라 및 개발 환경
 
 - **Docker (Next.js):** `docker compose up --build` → http://localhost:8899
+  - **필수:** `cp env.docker.example env.docker` (Supabase URL·Anon Key 없으면 로그인 화면에서 오류)
   - 개발 모드(핫 리로드): `npm run docker:dev` 또는 `docker compose up --build`
   - 프로덕션 빌드: `npm run docker:prod`
-  - Supabase는 호스트에서 `supabase start` 실행 시 `host.docker.internal:54321` 로 연결
+  - Supabase는 호스트에서 `supabase start` 실행 시 `env.docker` 의 `host.docker.internal:54321` 로 연결
 - **로컬 개발 (Docker 없이):** `supabase start` + `npm run dev` (포트 8899)
   - Supabase CLI가 PostgreSQL, Auth, Storage, Studio를 Docker로 로컬 구동
   - Inbucket(http://localhost:54324)으로 Magic Link 이메일 로컬 테스트 가능
