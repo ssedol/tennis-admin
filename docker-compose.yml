@@ -9,9 +9,7 @@ services:
       - "8899:8899"
     env_file:
       - path: env.docker
-        required: false
-      - path: .env.local
-        required: false
+        required: true
     environment:
       PORT: "8899"
       HOSTNAME: "0.0.0.0"

@@ -18,7 +18,11 @@ ENV HOSTNAME=0.0.0.0
 COPY package.json package-lock.json ./
 RUN npm ci
 
+COPY scripts/docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
+RUN chmod +x /usr/local/bin/docker-entrypoint.sh
+
 EXPOSE 8899
+ENTRYPOINT ["docker-entrypoint.sh"]
 CMD ["npm", "run", "dev"]
 
 # ── Production build ──────────────────────────────────────────

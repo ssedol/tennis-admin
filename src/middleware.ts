@@ -1,39 +1,47 @@
 import { createServerClient } from '@supabase/ssr'
 import { NextResponse, type NextRequest } from 'next/server'
+import { getSupabaseEnv } from '@/lib/supabase/env'
 
 export async function middleware(request: NextRequest) {
-  let supabaseResponse = NextResponse.next({ request })
-
-  const supabase = createServerClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-    {
-      cookies: {
-        getAll() {
-          return request.cookies.getAll()
-        },
-        setAll(cookiesToSet) {
-          cookiesToSet.forEach(({ name, value }) =>
-            request.cookies.set(name, value)
-          )
-          supabaseResponse = NextResponse.next({ request })
-          cookiesToSet.forEach(({ name, value, options }) =>
-            supabaseResponse.cookies.set(name, value, options)
-          )
-        },
-      },
-    }
-  )
-
-  const { data: { user } } = await supabase.auth.getUser()
   const { pathname } = request.nextUrl
 
-  // 비인증 사용자 → 로그인 페이지로
+  let url: string
+  let anonKey: string
+  try {
+    ;({ url, anonKey } = getSupabaseEnv())
+  } catch {
+    // env 미설정 시 로그인·정적 리소스만 허용
+    if (pathname.startsWith('/login') || pathname.startsWith('/auth')) {
+      return NextResponse.next()
+    }
+    return NextResponse.redirect(new URL('/login', request.url))
+  }
+
+  let supabaseResponse = NextResponse.next({ request })
+
+  const supabase = createServerClient(url, anonKey, {
+    cookies: {
+      getAll() {
+        return request.cookies.getAll()
+      },
+      setAll(cookiesToSet) {
+        cookiesToSet.forEach(({ name, value }) =>
+          request.cookies.set(name, value)
+        )
+        supabaseResponse = NextResponse.next({ request })
+        cookiesToSet.forEach(({ name, value, options }) =>
+          supabaseResponse.cookies.set(name, value, options)
+        )
+      },
+    },
+  })
+
+  const { data: { user } } = await supabase.auth.getUser()
+
   if (!user && !pathname.startsWith('/login') && !pathname.startsWith('/auth')) {
     return NextResponse.redirect(new URL('/login', request.url))
   }
 
-  // 인증된 사용자가 로그인 페이지 접근 → 역할별 홈으로
   if (user && pathname === '/login') {
     const { data: profile } = await supabase
       .from('profiles')
