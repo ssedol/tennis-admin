@@ -76,8 +76,10 @@ export default async function CourtsPage({
     if (!lesson.court_id) continue
     const hour  = new Date(lesson.scheduled_at).getUTCHours()
     const hours = Math.ceil((lesson.duration_min ?? 60) / 60)
-    const member = (lesson.member as { name: string } | null)?.name ?? '—'
-    const coach  = (lesson.coach  as { name: string } | null)?.name ?? '—'
+    const memberRaw = lesson.member as { name: string } | { name: string }[] | null
+    const coachRaw  = lesson.coach  as { name: string } | { name: string }[] | null
+    const member = (Array.isArray(memberRaw) ? memberRaw[0]?.name : memberRaw?.name) ?? '—'
+    const coach  = (Array.isArray(coachRaw)  ? coachRaw[0]?.name  : coachRaw?.name)  ?? '—'
     if (!schedule[lesson.court_id]) schedule[lesson.court_id] = {}
     for (let h = 0; h < hours; h++) {
       schedule[lesson.court_id][hour + h] = { type: 'LESSON', label: member, sub: `코치 ${coach}` }
