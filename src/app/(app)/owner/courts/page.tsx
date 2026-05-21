@@ -3,7 +3,7 @@ import { createClient } from '@/lib/supabase/server'
 import { CourtScheduleGrid } from '@/components/owner/CourtScheduleGrid'
 import { CourtDatePicker } from '@/components/owner/CourtDatePicker'
 
-type Slot = { type: 'LESSON' | 'CLUB' | 'EXTERNAL' | 'BLOCK' | 'EMPTY'; label?: string; sub?: string }
+type Slot = { id?: string; type: 'LESSON' | 'CLUB' | 'EXTERNAL' | 'BLOCK' | 'EMPTY'; label?: string; sub?: string }
 
 export default async function CourtsPage({
   searchParams,
