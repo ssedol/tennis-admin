@@ -65,13 +65,14 @@ export default async function OwnerPage() {
       .order('scheduled_at'),
   ])
 
-  const lessons = (todayLessons ?? []) as Array<{
+  type LessonRow = {
     id: string
     scheduled_at: string
     status: string
-    member: { name: string } | null
-    coach: { name: string } | null
-  }>
+    member: { name: string } | { name: string }[] | null
+    coach:  { name: string } | { name: string }[] | null
+  }
+  const lessons = (todayLessons ?? []) as unknown as LessonRow[]
 
   return (
     <>

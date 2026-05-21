@@ -3,12 +3,18 @@
 import { useState } from 'react'
 import Link from 'next/link'
 
+type NameObj = { name: string }
 type Lesson = {
   id: string
   scheduled_at: string
   status: string
-  member: { name: string } | null
-  coach: { name: string } | null
+  member: NameObj | NameObj[] | null
+  coach:  NameObj | NameObj[] | null
+}
+
+function getName(val: NameObj | NameObj[] | null): string {
+  if (!val) return '—'
+  return Array.isArray(val) ? (val[0]?.name ?? '—') : val.name
 }
 
 const STATUS_STYLE: Record<string, { label: string; className: string }> = {
@@ -35,7 +41,7 @@ function LessonRow({ item }: { item: Lesson }) {
         {formatTime(item.scheduled_at)}
       </span>
       <div className="flex-1 min-w-0">
-        <p className="text-sm font-medium truncate">{item.member?.name ?? '—'}</p>
+        <p className="text-sm font-medium truncate">{getName(item.member)}</p>
       </div>
       <span className={`text-[10px] font-medium px-2 py-0.5 rounded-full shrink-0 ${s.className}`}>
         {s.label}
@@ -67,7 +73,7 @@ function CoachSection({ coachName, lessons }: { coachName: string; lessons: Less
 export function TodaySchedule({ lessons }: { lessons: Lesson[] }) {
   // 코치별 그룹핑
   const grouped = lessons.reduce<Record<string, Lesson[]>>((acc, l) => {
-    const key = l.coach?.name ?? '미배정'
+    const key = getName(l.coach)
     if (!acc[key]) acc[key] = []
     acc[key].push(l)
     return acc

@@ -20,7 +20,7 @@ export async function POST(request: NextRequest) {
     auth: { autoRefreshToken: false, persistSession: false },
   })
   const { data: profile } = await admin.from('profiles').select('organization_id, role').eq('id', user.id).single()
-  if ((profile?.role as string)?.toUpperCase() !== 'OWNER') return NextResponse.json({ error: '권한 없음' }, { status: 403 })
+  if (!profile || (profile.role as string)?.toUpperCase() !== 'OWNER') return NextResponse.json({ error: '권한 없음' }, { status: 403 })
 
   const { data: court, error } = await admin
     .from('courts')

@@ -48,7 +48,7 @@ export async function POST(request: NextRequest) {
     .eq('id', caller.id)
     .single()
 
-  if ((callerProfile?.role as string | undefined)?.toUpperCase() !== 'OWNER') {
+  if (!callerProfile || (callerProfile.role as string)?.toUpperCase() !== 'OWNER') {
     return NextResponse.json({ error: '대표 계정만 등록 가능합니다' }, { status: 403 })
   }
 
