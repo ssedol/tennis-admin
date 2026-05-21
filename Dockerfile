@@ -27,9 +27,14 @@ CMD ["npm", "run", "dev"]
 
 # ── Production build ──────────────────────────────────────────
 FROM base AS builder
+# NEXT_PUBLIC_* 변수는 빌드 시점에 클라이언트 번들에 포함돼야 함
+ARG NEXT_PUBLIC_SUPABASE_URL
+ARG NEXT_PUBLIC_SUPABASE_ANON_KEY
+ENV NEXT_PUBLIC_SUPABASE_URL=$NEXT_PUBLIC_SUPABASE_URL
+ENV NEXT_PUBLIC_SUPABASE_ANON_KEY=$NEXT_PUBLIC_SUPABASE_ANON_KEY
+ENV NEXT_TELEMETRY_DISABLED=1
 COPY --from=deps /app/node_modules ./node_modules
 COPY . .
-ENV NEXT_TELEMETRY_DISABLED=1
 RUN npm run build
 
 FROM base AS production

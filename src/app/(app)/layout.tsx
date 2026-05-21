@@ -4,14 +4,17 @@ import { createClient } from '@/lib/supabase/server'
 import { DEV_COOKIE, IS_DEV } from '@/lib/dev-auth'
 
 export default async function AppLayout({ children }: { children: React.ReactNode }) {
-  // 개발 환경: dev 쿠키로 인증 우회
+  const cookieStore = await cookies()
+
+  // 개발 모드: dev 테스트 쿠키가 있으면 Supabase 없이 통과
   if (IS_DEV) {
-    const cookieStore = await cookies()
     const devRole = cookieStore.get(DEV_COOKIE)?.value
-    if (!devRole) redirect('/login')
-    return <div className="min-h-screen bg-background">{children}</div>
+    if (devRole) {
+      return <div className="min-h-screen bg-background">{children}</div>
+    }
   }
 
+  // Supabase 실제 세션 확인 (dev/prod 공통)
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) redirect('/login')

@@ -21,21 +21,24 @@ services:
       - "host.docker.internal:host-gateway"
     restart: unless-stopped
 
-  # 프로덕션 빌드 실행: docker compose --profile prod up --build
+  # NAS/서버 배포용 프로덕션 빌드
+  # 실행: docker compose --profile prod up -d --build
   web-prod:
     profiles: ["prod"]
     build:
       context: .
       dockerfile: Dockerfile
       target: production
+      args:
+        # env.docker 의 값을 빌드 ARG 로 전달 (클라이언트 번들에 포함)
+        NEXT_PUBLIC_SUPABASE_URL: ${NEXT_PUBLIC_SUPABASE_URL}
+        NEXT_PUBLIC_SUPABASE_ANON_KEY: ${NEXT_PUBLIC_SUPABASE_ANON_KEY}
     container_name: tennis-admin-web-prod
     ports:
       - "8899:8899"
     env_file:
       - path: env.docker
-        required: false
-      - path: .env.local
-        required: false
+        required: true
     environment:
       PORT: "8899"
       HOSTNAME: "0.0.0.0"

@@ -1,11 +1,6 @@
-import { cookies } from 'next/headers'
-import { DEV_PROFILES } from '@/lib/dev-auth'
+import { LogoutButton } from '@/components/layout/LogoutButton'
 
 export default async function CoachPage() {
-  const cookieStore = await cookies()
-  const devRole = cookieStore.get('x-dev-role')?.value
-  const profile = devRole ? DEV_PROFILES['COACH'] : null
-
   return (
     <main className="max-w-screen-sm mx-auto px-5 pb-10">
       <header className="flex items-center justify-between py-5">
@@ -13,9 +8,7 @@ export default async function CoachPage() {
           <span className="w-2 h-2 rounded-full bg-volta" />
           <span className="font-semibold text-[15px]">테니스 관리</span>
         </div>
-        <div className="w-8 h-8 rounded-full bg-secondary border border-border flex items-center justify-center text-xs text-muted-foreground">
-          {profile?.name?.[0] ?? '코'}
-        </div>
+        <LogoutButton />
       </header>
 
       <div className="mb-5">

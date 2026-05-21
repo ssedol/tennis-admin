@@ -1,80 +1,99 @@
-import { cookies } from 'next/headers'
-import { DEV_PROFILES } from '@/lib/dev-auth'
+import { createClient } from '@/lib/supabase/server'
+import { createClient as createAdminClient } from '@supabase/supabase-js'
+import { TodaySchedule } from '@/components/owner/TodaySchedule'
+import { StatsPanel } from '@/components/owner/StatsPanel'
 
 export default async function OwnerPage() {
-  // 개발: dev 쿠키에서 프로필 읽기
-  const cookieStore = await cookies()
-  const devRole = cookieStore.get('x-dev-role')?.value
-  const profile = devRole ? DEV_PROFILES['OWNER'] : null
+  const supabase = await createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+
+  const admin = createAdminClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.SUPABASE_SERVICE_ROLE_KEY!,
+    { auth: { autoRefreshToken: false, persistSession: false } }
+  )
+
+  // organization_id 조회
+  const { data: myProfile } = await admin
+    .from('profiles')
+    .select('organization_id')
+    .eq('id', user!.id)
+    .single()
+
+  const orgId = myProfile?.organization_id
+
+  // 기간 계산
+  const now        = new Date()
+  const yearStart  = new Date(now.getFullYear(), 0, 1).toISOString()
+  const yearEnd    = new Date(now.getFullYear(), 11, 31, 23, 59, 59).toISOString()
+  const monthStart = new Date(now.getFullYear(), now.getMonth(), 1).toISOString()
+  const monthEnd   = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59).toISOString()
+  const weekDay    = now.getDay() === 0 ? 6 : now.getDay() - 1  // 월요일 기준
+  const weekStart  = new Date(now.getFullYear(), now.getMonth(), now.getDate() - weekDay).toISOString()
+  const weekEnd    = new Date(now.getFullYear(), now.getMonth(), now.getDate() - weekDay + 6, 23, 59, 59).toISOString()
+  const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate()).toISOString()
+  const todayEnd   = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59).toISOString()
+
+  const lessonCount = (start: string, end: string) =>
+    admin.from('lesson_schedules').select('*', { count: 'exact', head: true })
+      .eq('organization_id', orgId)
+      .gte('scheduled_at', start)
+      .lte('scheduled_at', end)
+
+  const [
+    { count: coachCount },
+    { count: memberCount },
+    { count: yearlyCount },
+    { count: monthlyCount },
+    { count: weeklyCount },
+    { data: todayLessons },
+  ] = await Promise.all([
+    admin.from('profiles').select('*', { count: 'exact', head: true })
+      .eq('organization_id', orgId).eq('role', 'COACH'),
+    admin.from('profiles').select('*', { count: 'exact', head: true })
+      .eq('organization_id', orgId).eq('role', 'MEMBER'),
+    lessonCount(yearStart, yearEnd),
+    lessonCount(monthStart, monthEnd),
+    lessonCount(weekStart, weekEnd),
+    admin.from('lesson_schedules')
+      .select(`id, scheduled_at, status,
+        member:profiles!member_id(name),
+        coach:profiles!coach_id(name)`)
+      .eq('organization_id', orgId)
+      .gte('scheduled_at', todayStart)
+      .lte('scheduled_at', todayEnd)
+      .order('scheduled_at'),
+  ])
+
+  const lessons = (todayLessons ?? []) as Array<{
+    id: string
+    scheduled_at: string
+    status: string
+    member: { name: string } | null
+    coach: { name: string } | null
+  }>
 
   return (
-    <main className="max-w-screen-sm mx-auto px-5 pb-10">
-      <header className="flex items-center justify-between py-5">
-        <div className="flex items-center gap-2">
-          <span className="w-2 h-2 rounded-full bg-volta" />
-          <span className="font-semibold text-[15px]">테니스 관리</span>
-        </div>
-        <div className="w-8 h-8 rounded-full bg-secondary border border-border flex items-center justify-center text-xs text-muted-foreground">
-          {profile?.name?.[0] ?? '대'}
-        </div>
-      </header>
-
+    <>
       <div className="mb-5">
-        <h1 className="text-2xl font-bold tracking-tight">5월 현황</h1>
-        <p className="text-sm text-muted-foreground mt-1">2026년 · 전체 코치</p>
+        <h1 className="text-2xl font-bold tracking-tight">현황</h1>
+        <p className="text-sm text-muted-foreground mt-1">{now.getFullYear()}년</p>
       </div>
 
-      {/* 통계 */}
-      <div className="grid grid-cols-3 gap-2.5 mb-6">
-        {[
-          { value: '84', label: '이번달 레슨' },
-          { value: '3', label: '코치', accent: true },
-          { value: '21', label: '회원' },
-        ].map((s) => (
-          <div key={s.label} className="bg-card border border-border rounded-xl p-3.5 text-center">
-            <p className={`text-2xl font-bold tracking-tight ${s.accent ? 'text-volta' : ''}`}>{s.value}</p>
-            <p className="text-[11px] text-muted-foreground mt-1">{s.label}</p>
-          </div>
-        ))}
-      </div>
+      <StatsPanel
+        yearly={yearlyCount ?? 0}
+        monthly={monthlyCount ?? 0}
+        weekly={weeklyCount ?? 0}
+        coachCount={coachCount ?? 0}
+        memberCount={memberCount ?? 0}
+      />
 
       {/* 오늘 일정 */}
       <p className="text-[11px] font-semibold uppercase tracking-widest text-muted-foreground mb-3">
-        오늘 · 5월 19일 (화)
+        오늘 일정
       </p>
 
-      <div className="space-y-2">
-        {[
-          { time: '10:00', member: '이수진', coach: '김민준', status: '완료', statusClass: 'bg-emerald-500/10 text-emerald-400' },
-          { time: '11:00', member: '박준영', coach: '김민준', status: '진행 중', statusClass: 'bg-volta-muted text-volta', accent: true },
-          { time: '14:00', member: '최민서', coach: '박서연', status: '예정', statusClass: 'bg-secondary text-muted-foreground' },
-          { time: '15:00', member: '강유진', coach: '최태호', status: '예정', statusClass: 'bg-secondary text-muted-foreground' },
-        ].map((item) => (
-          <div
-            key={item.time + item.member}
-            className={`flex items-center gap-3 bg-card border rounded-xl p-4 transition-colors ${item.accent ? 'border-volta/20' : 'border-border'}`}
-          >
-            <span className="text-[11px] text-muted-foreground w-10 shrink-0 tabular-nums">{item.time}</span>
-            <div className="flex-1 min-w-0">
-              <p className="text-sm font-semibold truncate">{item.member}</p>
-              <p className="text-xs text-muted-foreground mt-0.5">{item.coach}</p>
-            </div>
-            <span className={`text-[10px] font-medium px-2 py-1 rounded-full shrink-0 ${item.statusClass}`}>
-              {item.status}
-            </span>
-          </div>
-        ))}
-      </div>
-
-      {/* 개발용 역할 전환 */}
-      <div className="mt-10 pt-5 border-t border-border">
-        <p className="text-[11px] text-muted-foreground mb-2">개발 테스트 — 역할 전환</p>
-        <div className="flex gap-2">
-          <a href="/api/dev/login?role=OWNER" className="text-xs px-3 py-1.5 rounded-lg border border-volta/30 bg-volta-muted text-volta">대표</a>
-          <a href="/api/dev/login?role=COACH" className="text-xs px-3 py-1.5 rounded-lg border border-border bg-secondary text-muted-foreground hover:text-foreground transition-colors">코치</a>
-          <a href="/api/dev/login?role=MEMBER" className="text-xs px-3 py-1.5 rounded-lg border border-border bg-secondary text-muted-foreground hover:text-foreground transition-colors">회원</a>
-        </div>
-      </div>
-    </main>
+      <TodaySchedule lessons={lessons} />
+    </>
   )
 }
