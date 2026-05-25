@@ -1,7 +1,169 @@
 import { LogoutButton } from '@/components/layout/LogoutButton'
 import { MemberClient } from '@/components/member/MemberClient'
+import { createClient } from '@/lib/supabase/server'
+import { createClient as createAdminClient } from '@supabase/supabase-js'
+import { redirect } from 'next/navigation'
+
+function getName(val: { name: string } | { name: string }[] | null | undefined): string {
+  if (!val) return '—'
+  return Array.isArray(val) ? (val[0]?.name ?? '—') : val.name
+}
+
+function formatNextLessonTime(iso: string): string {
+  const d = new Date(iso)
+  const now = new Date()
+  const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate())
+  const targetStart = new Date(d.getFullYear(), d.getMonth(), d.getDate())
+  const dayDiff = Math.round((targetStart.getTime() - todayStart.getTime()) / (24 * 60 * 60 * 1000))
+  const time = d.toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit', hour12: false })
+
+  if (dayDiff === 0) return `오늘 ${time}`
+  if (dayDiff === 1) return `내일 ${time}`
+  return `${d.toLocaleDateString('ko-KR', { month: 'long', day: 'numeric' })} ${time}`
+}
+
+function formatNextLessonDate(iso: string): string {
+  return new Date(iso).toLocaleDateString('ko-KR', {
+    month: 'long',
+    day: 'numeric',
+    weekday: 'long',
+  })
+}
+
+function getDaysUntil(iso: string): string {
+  const target = new Date(iso)
+  const now = new Date()
+  const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate())
+  const targetStart = new Date(target.getFullYear(), target.getMonth(), target.getDate())
+  const diff = Math.round((targetStart.getTime() - todayStart.getTime()) / (24 * 60 * 60 * 1000))
+
+  if (diff === 0) return 'D-Day'
+  if (diff > 0) return `D-${diff}`
+  return `D+${Math.abs(diff)}`
+}
+
+function formatPastLessonDate(iso: string): string {
+  const d = new Date(iso)
+  const date = d.toLocaleDateString('ko-KR', { month: 'long', day: 'numeric', weekday: 'short' })
+  const time = d.toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit', hour12: false })
+  return `${date} ${time}`
+}
+
+function formatFeedbackSummary(feedbackCount: number, videoCount: number): string {
+  if (feedbackCount === 0 && videoCount === 0) return '피드백 없음'
+  const parts: string[] = []
+  if (feedbackCount > 0) parts.push(`피드백 댓글 ${feedbackCount}개`)
+  if (videoCount > 0) parts.push(`영상 ${videoCount}개`)
+  return parts.join(' · ')
+}
+
+function formatLogDate(iso: string): string {
+  return new Date(iso).toLocaleDateString('ko-KR', { month: 'long', day: 'numeric' })
+}
 
 export default async function MemberPage() {
+  const supabase = await createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) redirect('/login')
+
+  const admin = createAdminClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.SUPABASE_SERVICE_ROLE_KEY!,
+    { auth: { autoRefreshToken: false, persistSession: false } }
+  )
+
+  const { data: profile } = await admin
+    .from('profiles')
+    .select('id, organization_id, role')
+    .eq('id', user.id)
+    .single()
+
+  const memberId = profile?.id
+  const now = new Date().toISOString()
+
+  type LessonRow = {
+    id: string
+    scheduled_at: string
+    duration_min: number
+    status: string
+    coach: { name: string } | { name: string }[] | null
+    court: { name: string } | { name: string }[] | null
+  }
+
+  const [nextRes, pastRes, logsRes] = await Promise.all([
+    admin
+      .from('lesson_schedules')
+      .select(`
+        id, scheduled_at, duration_min, status,
+        coach:profiles!coach_id(name),
+        court:courts(name)
+      `)
+      .eq('member_id', memberId!)
+      .in('status', ['SCHEDULED', 'IN_PROGRESS'])
+      .gte('scheduled_at', now)
+      .order('scheduled_at')
+      .limit(1),
+    admin
+      .from('lesson_schedules')
+      .select(`
+        id, scheduled_at, duration_min, status,
+        coach:profiles!coach_id(name),
+        court:courts(name)
+      `)
+      .eq('member_id', memberId!)
+      .eq('status', 'COMPLETED')
+      .order('scheduled_at', { ascending: false }),
+    admin
+      .from('tennis_logs')
+      .select('id, log_type, content, recorded_at')
+      .eq('member_id', memberId!)
+      .order('recorded_at', { ascending: false }),
+  ])
+
+  const pastLessons = (pastRes.data ?? []) as unknown as LessonRow[]
+  const pastIds = pastLessons.map((l) => l.id)
+
+  let feedbackCounts: Record<string, number> = {}
+  let videoCounts: Record<string, number> = {}
+
+  if (pastIds.length > 0) {
+    const [feedbacksRes, videosRes] = await Promise.all([
+      admin.from('lesson_feedbacks').select('lesson_id').in('lesson_id', pastIds),
+      admin.from('videos').select('lesson_id').in('lesson_id', pastIds),
+    ])
+
+    for (const row of feedbacksRes.data ?? []) {
+      feedbackCounts[row.lesson_id] = (feedbackCounts[row.lesson_id] ?? 0) + 1
+    }
+    for (const row of videosRes.data ?? []) {
+      videoCounts[row.lesson_id] = (videoCounts[row.lesson_id] ?? 0) + 1
+    }
+  }
+
+  const nextRaw = (nextRes.data?.[0] ?? null) as unknown as LessonRow | null
+  const nextLesson = nextRaw
+    ? {
+        timeLabel: formatNextLessonTime(nextRaw.scheduled_at),
+        dateLabel: formatNextLessonDate(nextRaw.scheduled_at),
+        daysUntil: getDaysUntil(nextRaw.scheduled_at),
+        sub: `${getName(nextRaw.coach)} · ${getName(nextRaw.court)} · ${nextRaw.duration_min}분`,
+      }
+    : null
+
+  const pastLessonItems = pastLessons.map((l) => ({
+    id: l.id,
+    date: formatPastLessonDate(l.scheduled_at),
+    coach: `${getName(l.coach)} · ${getName(l.court)}`,
+    feedback: formatFeedbackSummary(feedbackCounts[l.id] ?? 0, videoCounts[l.id] ?? 0),
+  }))
+
+  const logs = (logsRes.data ?? []).map((l) => ({
+    id: l.id,
+    type: l.log_type as 'LESSON' | 'PRACTICE' | 'MATCH',
+    date: formatLogDate(l.recorded_at),
+    content: l.content ?? '',
+  }))
+
   return (
     <main className="max-w-screen-sm mx-auto px-5 pb-10">
       <header className="flex items-center justify-between py-5">
@@ -12,9 +174,12 @@ export default async function MemberPage() {
         <LogoutButton />
       </header>
 
-      <MemberClient />
+      <MemberClient
+        nextLesson={nextLesson}
+        pastLessons={pastLessonItems}
+        initialLogs={logs}
+      />
 
-      {/* 개발용 역할 전환 */}
       {process.env.NODE_ENV === 'development' && (
         <div className="mt-10 pt-5 border-t border-border">
           <p className="text-[11px] text-muted-foreground mb-2">개발 테스트 — 역할 전환</p>
