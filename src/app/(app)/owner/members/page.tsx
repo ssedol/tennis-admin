@@ -23,7 +23,7 @@ export default async function MembersPage() {
   // 같은 조직의 코치·회원 조회 (orgId 없으면 전체)
   let query = admin
     .from('profiles')
-    .select('id, name, phone, role, organization_id')
+    .select('id, name, phone, role, organization_id, coach_id')
     .in('role', ['COACH', 'MEMBER'])
     .order('role')
     .order('name')
@@ -34,8 +34,13 @@ export default async function MembersPage() {
 
   const { data: profiles } = await query
 
-  const coaches = (profiles ?? []).filter((p) => p.role === 'COACH')
-  const members = (profiles ?? []).filter((p) => p.role === 'MEMBER')
+  // auth.users 에서 이메일 병합
+  const { data: { users: authUsers } } = await admin.auth.admin.listUsers({ perPage: 1000 })
+  const emailMap = Object.fromEntries(authUsers.map((u) => [u.id, u.email ?? '']))
+
+  const withEmail = (profiles ?? []).map((p) => ({ ...p, email: emailMap[p.id] ?? '' }))
+  const coaches = withEmail.filter((p) => p.role === 'COACH')
+  const members = withEmail.filter((p) => p.role === 'MEMBER')
 
   return (
     <>

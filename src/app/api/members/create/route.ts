@@ -3,6 +3,7 @@ import { createServerClient } from '@supabase/ssr'
 import { createClient as createAdminClient } from '@supabase/supabase-js'
 import { cookies } from 'next/headers'
 import { getSupabaseEnv } from '@/lib/supabase/env'
+import { SKIP_MUST_CHANGE_PASSWORD } from '@/lib/auth-config'
 
 export async function POST(request: NextRequest) {
   const body = await request.json()
@@ -71,7 +72,7 @@ export async function POST(request: NextRequest) {
       phone: phone ?? '',
       role,
       organization_id: orgId,
-      must_change_password: true,
+      must_change_password: !SKIP_MUST_CHANGE_PASSWORD,
     },
   })
 
@@ -89,6 +90,7 @@ export async function POST(request: NextRequest) {
         phone: phone ?? '',
         role: role as 'COACH' | 'MEMBER',
         organization_id: orgId,
+        coach_id: coachId || null,
       }, { onConflict: 'id' })
   }
 

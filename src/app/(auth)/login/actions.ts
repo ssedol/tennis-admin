@@ -3,6 +3,13 @@
 import { redirect } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
 import { createClient as createSupabaseClient } from '@supabase/supabase-js'
+import { SKIP_MUST_CHANGE_PASSWORD } from '@/lib/auth-config'
+
+export async function logoutAction() {
+  const supabase = await createClient()
+  await supabase.auth.signOut()
+  redirect('/login')
+}
 
 const ROLE_REDIRECTS: Record<string, string> = {
   OWNER: '/owner',
@@ -27,8 +34,8 @@ export async function loginAction(
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return '로그인 처리 중 오류가 발생했습니다'
 
-  // 첫 로그인 감지 — 비밀번호 변경 필요
-  if (user.user_metadata?.must_change_password === true) {
+  // 첫 로그인 비밀번호 변경 — 개발/테스트 환경에서는 생략
+  if (!SKIP_MUST_CHANGE_PASSWORD && user.user_metadata?.must_change_password === true) {
     redirect('/change-password')
   }
 

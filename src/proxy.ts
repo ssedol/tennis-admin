@@ -23,10 +23,10 @@ export async function proxy(request: NextRequest) {
     const devRole = request.cookies.get(DEV_COOKIE)?.value as DevRole | undefined
     if (pathname.startsWith('/api/dev')) return NextResponse.next()
 
+    // /login 은 항상 통과 (로그아웃 후 쿠키 삭제 타이밍 문제 방지)
+    if (pathname === '/login') return NextResponse.next()
+
     if (devRole && ROLE_REDIRECTS[devRole]) {
-      if (pathname === '/login') {
-        return NextResponse.redirect(new URL(ROLE_REDIRECTS[devRole], request.url))
-      }
       return NextResponse.next()
     }
   }

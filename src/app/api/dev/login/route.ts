@@ -44,7 +44,7 @@ export function DELETE(request: NextRequest) {
   if (!IS_DEV) {
     return NextResponse.json({ error: 'dev only' }, { status: 403 })
   }
-  const response = NextResponse.redirect(`${getBaseUrl(request)}/login`)
+  const response = NextResponse.json({ ok: true })
   response.cookies.delete(DEV_COOKIE)
   return response
 }

@@ -1,25 +1,15 @@
 'use client'
 
-import { useRouter } from 'next/navigation'
-import { createClient } from '@/lib/supabase/client'
-import { IS_DEV, DEV_COOKIE } from '@/lib/dev-auth'
+import { logoutAction } from '@/app/(auth)/login/actions'
+import { IS_DEV } from '@/lib/dev-auth'
 
 export function LogoutButton() {
-  const router = useRouter()
-
   async function handleLogout() {
     if (IS_DEV) {
-      // 개발 모드: dev 쿠키 삭제
-      await fetch('/api/dev/login', { method: 'DELETE' })
-      router.push('/login')
-      router.refresh()
+      window.location.href = '/login'
       return
     }
-
-    const supabase = createClient()
-    await supabase.auth.signOut()
-    router.push('/login')
-    router.refresh()
+    await logoutAction()
   }
 
   return (
