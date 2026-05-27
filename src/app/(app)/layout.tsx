@@ -2,6 +2,7 @@ import { redirect } from 'next/navigation'
 import { cookies } from 'next/headers'
 import { createClient } from '@/lib/supabase/server'
 import { DEV_COOKIE, IS_DEV } from '@/lib/dev-auth'
+import { DevRoleSwitcher } from '@/components/dev/DevRoleSwitcher'
 
 export default async function AppLayout({ children }: { children: React.ReactNode }) {
   const cookieStore = await cookies()
@@ -10,7 +11,12 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   if (IS_DEV) {
     const devRole = cookieStore.get(DEV_COOKIE)?.value
     if (devRole) {
-      return <div className="min-h-screen bg-background">{children}</div>
+      return (
+        <div className="min-h-screen bg-background pb-16">
+          {children}
+          <DevRoleSwitcher />
+        </div>
+      )
     }
   }
 
@@ -20,8 +26,9 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   if (!user) redirect('/login')
 
   return (
-    <div className="min-h-screen bg-background">
+    <div className={`min-h-screen bg-background${IS_DEV ? ' pb-16' : ''}`}>
       {children}
+      {IS_DEV && <DevRoleSwitcher />}
     </div>
   )
 }

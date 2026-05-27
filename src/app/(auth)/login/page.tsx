@@ -1,12 +1,21 @@
 'use client'
 
 import { useActionState } from 'react'
-import { loginAction } from './actions'
+import { devQuickLoginAction, loginAction } from './actions'
 
 const IS_DEV = process.env.NODE_ENV === 'development'
 
+const DEV_ROLES = [
+  { role: 'OWNER' as const, label: '대표' },
+  { role: 'COACH' as const, label: '코치' },
+  { role: 'MEMBER' as const, label: '회원' },
+]
+
 export default function LoginPage() {
   const [error, action, pending] = useActionState(loginAction, null)
+  const [devError, devAction, devPending] = useActionState(devQuickLoginAction, null)
+  const displayError = error ?? devError
+  const isPending = pending || devPending
 
   return (
     <main className="min-h-screen flex flex-col items-center justify-center px-6 py-12">
@@ -56,13 +65,13 @@ export default function LoginPage() {
             />
           </div>
 
-          {error && (
-            <p className="text-xs text-destructive">{error}</p>
+          {displayError && (
+            <p className="text-xs text-destructive">{displayError}</p>
           )}
 
           <button
             type="submit"
-            disabled={pending}
+            disabled={isPending}
             className="w-full py-2.5 rounded-lg bg-volta text-black text-sm font-semibold tracking-tight disabled:opacity-50 disabled:cursor-not-allowed hover:opacity-90 transition-opacity"
           >
             {pending ? '로그인 중...' : '로그인'}
@@ -80,18 +89,21 @@ export default function LoginPage() {
         <div className="w-full max-w-sm mt-8">
           <div className="flex items-center gap-3 mb-3">
             <div className="flex-1 h-px bg-border" />
-            <span className="text-xs text-muted-foreground">개발 테스트</span>
+            <span className="text-xs text-muted-foreground">계정변환테스트</span>
             <div className="flex-1 h-px bg-border" />
           </div>
           <div className="grid grid-cols-3 gap-2">
-            {(['OWNER', 'COACH', 'MEMBER'] as const).map((role) => (
-              <a
-                key={role}
-                href={`/api/dev/login?role=${role}`}
-                className="py-2 text-center text-xs font-medium rounded-lg bg-card border border-border text-muted-foreground hover:text-foreground transition-colors"
-              >
-                {role === 'OWNER' ? '대표' : role === 'COACH' ? '코치' : '회원'}
-              </a>
+            {DEV_ROLES.map(({ role, label }) => (
+              <form key={role} action={devAction}>
+                <input type="hidden" name="role" value={role} />
+                <button
+                  type="submit"
+                  disabled={isPending}
+                  className="w-full py-2 text-center text-xs font-medium rounded-lg bg-card border border-border text-muted-foreground hover:text-foreground transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  {devPending ? '...' : label}
+                </button>
+              </form>
             ))}
           </div>
         </div>
