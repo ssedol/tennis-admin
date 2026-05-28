@@ -3,6 +3,8 @@ import { createClient as createAdminClient } from '@supabase/supabase-js'
 import { createServerClient } from '@supabase/ssr'
 import { cookies } from 'next/headers'
 import { getSupabaseEnv } from '@/lib/supabase/env'
+import { recordLessonHistory } from '@/lib/lesson-history'
+import { canDeleteLesson, cleanupLessonDependencies } from '@/lib/lesson-delete'
 
 async function getCallerProfile() {
   const { url, anonKey } = getSupabaseEnv()
@@ -83,6 +85,55 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
       .eq('id', id)
     if (error) return NextResponse.json({ error: error.message }, { status: 400 })
   }
+
+  return NextResponse.json({ ok: true })
+}
+
+export async function DELETE(_request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+  const { id } = await params
+  const profile = await getCallerProfile()
+  if (!profile) return NextResponse.json({ error: '인증 필요' }, { status: 401 })
+
+  const role = (profile.role as string).toUpperCase()
+  if (role !== 'COACH' && role !== 'OWNER') {
+    return NextResponse.json({ error: '권한 없음' }, { status: 403 })
+  }
+
+  const { url } = getSupabaseEnv()
+  const admin = createAdminClient(url, process.env.SUPABASE_SERVICE_ROLE_KEY!, {
+    auth: { autoRefreshToken: false, persistSession: false },
+  })
+
+  const { data: lesson } = await admin
+    .from('lesson_schedules')
+    .select('id, organization_id, coach_id, created_by, member_id, court_id, scheduled_at, duration_min, status')
+    .eq('id', id)
+    .single()
+
+  if (!lesson) return NextResponse.json({ error: '레슨을 찾을 수 없습니다' }, { status: 404 })
+  if (lesson.organization_id !== profile.organization_id) {
+    return NextResponse.json({ error: '권한 없음' }, { status: 403 })
+  }
+  if (role === 'COACH' && lesson.created_by !== profile.id) {
+    return NextResponse.json({ error: '본인이 등록한 레슨만 삭제할 수 있습니다' }, { status: 403 })
+  }
+  if (!canDeleteLesson(lesson.status)) {
+    return NextResponse.json({ error: '삭제할 수 없는 레슨 상태입니다' }, { status: 400 })
+  }
+
+  try {
+    await recordLessonHistory(admin, 'DELETED', profile.id, [lesson])
+  } catch (historyError) {
+    return NextResponse.json(
+      { error: historyError instanceof Error ? historyError.message : '이력 기록에 실패했습니다' },
+      { status: 500 }
+    )
+  }
+
+  await cleanupLessonDependencies(admin, id)
+
+  const { error } = await admin.from('lesson_schedules').delete().eq('id', id)
+  if (error) return NextResponse.json({ error: error.message }, { status: 400 })
 
   return NextResponse.json({ ok: true })
 }

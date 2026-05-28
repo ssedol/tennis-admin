@@ -2,6 +2,8 @@ import { createClient } from '@/lib/supabase/server'
 import { createClient as createAdminClient } from '@supabase/supabase-js'
 import { redirect } from 'next/navigation'
 import { MemberLessonDetailClient } from '@/components/member/MemberLessonDetailClient'
+import { formatStoredScheduleDate, formatStoredScheduleTime } from '@/lib/time-slots'
+import { canAccessLessonFeedback } from '@/lib/lesson-access'
 
 const STATUS_LABEL: Record<string, { label: string; className: string }> = {
   SCHEDULED: { label: '예정', className: 'bg-secondary text-muted-foreground' },
@@ -37,7 +39,7 @@ export default async function LessonDetailPage({ params }: { params: Promise<{ i
   const { data: lesson } = await admin
     .from('lesson_schedules')
     .select(`
-      id, scheduled_at, duration_min, status, member_id, organization_id,
+      id, scheduled_at, duration_min, status, member_id, coach_id, organization_id,
       coach:profiles!coach_id(name)
     `)
     .eq('id', id)
@@ -47,12 +49,17 @@ export default async function LessonDetailPage({ params }: { params: Promise<{ i
     redirect('/member')
   }
 
-  const role = (profile?.role as string)?.toUpperCase()
-  if (role === 'MEMBER' && lesson.member_id !== profile?.id) {
+  if (
+    !profile ||
+    !canAccessLessonFeedback(profile, {
+      coach_id: lesson.coach_id,
+      member_id: lesson.member_id,
+      organization_id: lesson.organization_id,
+    })
+  ) {
     redirect('/member')
   }
 
-  const scheduled = new Date(lesson.scheduled_at)
   const status = STATUS_LABEL[lesson.status] ?? STATUS_LABEL.SCHEDULED
   const coachName = getName(lesson.coach as { name: string } | { name: string }[] | null)
 
@@ -61,7 +68,7 @@ export default async function LessonDetailPage({ params }: { params: Promise<{ i
       <MemberLessonDetailClient
         lessonId={id}
         lesson={{
-          date: `${scheduled.toLocaleDateString('ko-KR', { month: 'long', day: 'numeric', weekday: 'short' })} ${scheduled.toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit', hour12: false })}`,
+          date: `${formatStoredScheduleDate(lesson.scheduled_at)} ${formatStoredScheduleTime(lesson.scheduled_at)}`,
           coach: coachName,
           duration: `${lesson.duration_min}분`,
           status: status.label,

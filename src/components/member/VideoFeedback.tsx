@@ -72,7 +72,7 @@ function UploadPanel({
   )
 }
 
-export function VideoFeedback({ lessonId }: { lessonId: string }) {
+export function VideoFeedback({ lessonId, readOnly = false }: { lessonId: string; readOnly?: boolean }) {
   const [hasVideo, setHasVideo] = useState<boolean | null>(null)
   const [videoUrl, setVideoUrl] = useState<string | null>(null)
   const [canUpload, setCanUpload] = useState(false)
@@ -298,25 +298,31 @@ export function VideoFeedback({ lessonId }: { lessonId: string }) {
 
         <div className="px-4 pb-3 border-t border-border pt-3 flex gap-2 items-start">
           <span className="shrink-0 mt-2.5 text-xs font-mono text-volta">{formatTime(currentTime)}</span>
-          <textarea
-            value={draft}
-            onChange={(e) => setDraft(e.target.value)}
-            placeholder={`${formatTime(currentTime)} 에 코멘트 추가...`}
-            rows={2}
-            className="flex-1 px-3 py-2 rounded-lg bg-background border border-border text-sm text-foreground placeholder:text-muted-foreground/50 outline-none focus:border-volta transition-colors resize-none"
-          />
-          <button
-            type="button"
-            onClick={handleAddComment}
-            disabled={!draft.trim() || submitting}
-            className="self-end px-3 py-2 rounded-lg bg-volta text-black text-xs font-semibold disabled:opacity-40 hover:opacity-90 transition-opacity whitespace-nowrap"
-          >
-            {submitting ? '등록 중...' : '추가'}
-          </button>
+          {!readOnly ? (
+            <>
+              <textarea
+                value={draft}
+                onChange={(e) => setDraft(e.target.value)}
+                placeholder={`${formatTime(currentTime)} 에 코멘트 추가...`}
+                rows={2}
+                className="flex-1 px-3 py-2 rounded-lg bg-background border border-border text-sm text-foreground placeholder:text-muted-foreground/50 outline-none focus:border-volta transition-colors resize-none"
+              />
+              <button
+                type="button"
+                onClick={handleAddComment}
+                disabled={!draft.trim() || submitting}
+                className="self-end px-3 py-2 rounded-lg bg-volta text-black text-xs font-semibold disabled:opacity-40 hover:opacity-90 transition-opacity whitespace-nowrap"
+              >
+                {submitting ? '등록 중...' : '추가'}
+              </button>
+            </>
+          ) : (
+            <p className="text-xs text-muted-foreground py-2">열람 전용 · 코치·회원만 댓글을 작성할 수 있습니다</p>
+          )}
         </div>
       </div>
 
-      {canUpload && (
+      {canUpload && !readOnly && (
         <div className="flex justify-end">
           <UploadPanel uploading={uploading} label="영상 교체" onSelect={handleUpload} />
         </div>

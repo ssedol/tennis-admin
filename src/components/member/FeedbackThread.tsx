@@ -27,7 +27,7 @@ function normalizeRole(role: string): Comment['role'] {
   return 'COACH'
 }
 
-export function FeedbackThread({ lessonId }: { lessonId: string }) {
+export function FeedbackThread({ lessonId, readOnly = false }: { lessonId: string; readOnly?: boolean }) {
   const [comments, setComments] = useState<Comment[]>([])
   const [draft, setDraft] = useState('')
   const [loading, setLoading] = useState(true)
@@ -137,6 +137,7 @@ export function FeedbackThread({ lessonId }: { lessonId: string }) {
         </div>
       )}
 
+      {!readOnly && (
       <div className="flex gap-2 pt-2 border-t border-border">
         <textarea
           value={draft}
@@ -153,6 +154,7 @@ export function FeedbackThread({ lessonId }: { lessonId: string }) {
           {submitting ? '등록 중...' : '등록'}
         </button>
       </div>
+      )}
 
       {error && <p className="text-xs text-destructive">{error}</p>}
     </div>

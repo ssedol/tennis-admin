@@ -2,6 +2,8 @@ import { createClient } from '@/lib/supabase/server'
 import { createClient as createAdminClient } from '@supabase/supabase-js'
 import { CoachLessonDetailClient } from '@/components/coach/CoachLessonDetailClient'
 import { redirect } from 'next/navigation'
+import { formatStoredScheduleDate, formatStoredScheduleTime } from '@/lib/time-slots'
+import { canAccessLessonFeedback } from '@/lib/lesson-access'
 
 const STATUS_LABEL: Record<string, { label: string; className: string }> = {
   SCHEDULED: { label: '예정', className: 'bg-secondary text-muted-foreground' },
@@ -37,7 +39,7 @@ export default async function CoachLessonPage({ params }: { params: Promise<{ id
   const { data: lesson } = await admin
     .from('lesson_schedules')
     .select(`
-      id, scheduled_at, duration_min, status, coach_id, organization_id,
+      id, scheduled_at, duration_min, status, coach_id, member_id, organization_id,
       member:profiles!member_id(name),
       court:courts(name)
     `)
@@ -48,8 +50,14 @@ export default async function CoachLessonPage({ params }: { params: Promise<{ id
     redirect('/coach')
   }
 
-  const role = (profile?.role as string)?.toUpperCase()
-  if (role === 'COACH' && lesson.coach_id !== profile?.id) {
+  if (
+    !profile ||
+    !canAccessLessonFeedback(profile, {
+      coach_id: lesson.coach_id,
+      member_id: lesson.member_id,
+      organization_id: lesson.organization_id,
+    })
+  ) {
     redirect('/coach')
   }
 
@@ -57,7 +65,6 @@ export default async function CoachLessonPage({ params }: { params: Promise<{ id
     redirect('/coach')
   }
 
-  const scheduled = new Date(lesson.scheduled_at)
   const status = STATUS_LABEL[lesson.status] ?? STATUS_LABEL.SCHEDULED
 
   return (
@@ -65,8 +72,8 @@ export default async function CoachLessonPage({ params }: { params: Promise<{ id
       <CoachLessonDetailClient
         lessonId={id}
         lesson={{
-          date: scheduled.toLocaleDateString('ko-KR', { month: 'long', day: 'numeric', weekday: 'short' }),
-          time: scheduled.toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit', hour12: false }),
+          date: formatStoredScheduleDate(lesson.scheduled_at),
+          time: formatStoredScheduleTime(lesson.scheduled_at),
           member: getName(lesson.member as { name: string } | { name: string }[] | null),
           court: getName(lesson.court as { name: string } | { name: string }[] | null),
           duration: `${lesson.duration_min}분`,

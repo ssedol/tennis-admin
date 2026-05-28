@@ -3,6 +3,7 @@ import { createClient as createAdminClient } from '@supabase/supabase-js'
 import { createServerClient } from '@supabase/ssr'
 import { cookies } from 'next/headers'
 import { getSupabaseEnv } from '@/lib/supabase/env'
+import { canViewLessonFeedback, canWriteLessonFeedback, fetchLessonForFeedback } from '@/lib/lesson-access'
 
 type ProfileRow = { id: string; name: string; role: string }
 type FeedbackRow = {
@@ -36,27 +37,12 @@ async function getCallerProfile() {
   return profile
 }
 
-async function getLessonAccess(lessonId: string, profile: { id: string; organization_id: string | null; role: string }) {
+async function getLesson(lessonId: string) {
   const { url } = getSupabaseEnv()
   const admin = createAdminClient(url, process.env.SUPABASE_SERVICE_ROLE_KEY!, {
     auth: { autoRefreshToken: false, persistSession: false },
   })
-
-  const { data: lesson } = await admin
-    .from('lesson_schedules')
-    .select('id, coach_id, member_id, organization_id')
-    .eq('id', lessonId)
-    .single()
-
-  if (!lesson || lesson.organization_id !== profile.organization_id) return null
-
-  const role = (profile.role as string).toUpperCase()
-  const canAccess =
-    role === 'OWNER' ||
-    lesson.coach_id === profile.id ||
-    lesson.member_id === profile.id
-
-  return canAccess ? lesson : null
+  return fetchLessonForFeedback(admin, lessonId)
 }
 
 function toAuthor(profile: ProfileRow | undefined, fallbackName = '—') {
@@ -83,8 +69,10 @@ export async function GET(_request: NextRequest, { params }: { params: Promise<{
   const profile = await getCallerProfile()
   if (!profile) return NextResponse.json({ error: '인증 필요' }, { status: 401 })
 
-  const lesson = await getLessonAccess(lessonId, profile)
-  if (!lesson) return NextResponse.json({ error: '권한 없음' }, { status: 403 })
+  const lesson = await getLesson(lessonId)
+  if (!lesson || !canViewLessonFeedback(profile, lesson)) {
+    return NextResponse.json({ error: '권한 없음' }, { status: 403 })
+  }
 
   const { url } = getSupabaseEnv()
   const admin = createAdminClient(url, process.env.SUPABASE_SERVICE_ROLE_KEY!, {
@@ -130,12 +118,14 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
   if (!profile) return NextResponse.json({ error: '인증 필요' }, { status: 401 })
 
   const role = (profile.role as string).toUpperCase()
-  if (role !== 'COACH' && role !== 'MEMBER' && role !== 'OWNER') {
+  if (role !== 'COACH' && role !== 'MEMBER') {
     return NextResponse.json({ error: '권한 없음' }, { status: 403 })
   }
 
-  const lesson = await getLessonAccess(lessonId, profile)
-  if (!lesson) return NextResponse.json({ error: '권한 없음' }, { status: 403 })
+  const lesson = await getLesson(lessonId)
+  if (!lesson || !canWriteLessonFeedback(profile, lesson)) {
+    return NextResponse.json({ error: '권한 없음' }, { status: 403 })
+  }
 
   if (role === 'COACH' && lesson.coach_id !== profile.id) {
     return NextResponse.json({ error: '본인 레슨에만 피드백을 등록할 수 있습니다' }, { status: 403 })

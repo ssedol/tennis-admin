@@ -2,6 +2,7 @@ import { createClient as createAdminClient } from '@supabase/supabase-js'
 import { createClient } from '@/lib/supabase/server'
 import { CourtScheduleGrid } from '@/components/owner/CourtScheduleGrid'
 import { CourtDatePicker } from '@/components/owner/CourtDatePicker'
+import { durationToSlotCount, utcIsoRangeToSlotIndices, utcIsoToSlotIndex } from '@/lib/time-slots'
 
 type Slot = { id?: string; type: 'LESSON' | 'CLUB' | 'EXTERNAL' | 'BLOCK' | 'EMPTY'; label?: string; sub?: string }
 
@@ -74,26 +75,24 @@ export default async function CourtsPage({
 
   for (const lesson of lessons ?? []) {
     if (!lesson.court_id) continue
-    const hour  = new Date(lesson.scheduled_at).getUTCHours()
-    const hours = Math.ceil((lesson.duration_min ?? 60) / 60)
+    const startSlot = utcIsoToSlotIndex(lesson.scheduled_at)
+    const slotCount = durationToSlotCount(lesson.duration_min ?? 60)
     const memberRaw = lesson.member as { name: string } | { name: string }[] | null
     const coachRaw  = lesson.coach  as { name: string } | { name: string }[] | null
     const member = (Array.isArray(memberRaw) ? memberRaw[0]?.name : memberRaw?.name) ?? '—'
     const coach  = (Array.isArray(coachRaw)  ? coachRaw[0]?.name  : coachRaw?.name)  ?? '—'
     if (!schedule[lesson.court_id]) schedule[lesson.court_id] = {}
-    for (let h = 0; h < hours; h++) {
-      schedule[lesson.court_id][hour + h] = { type: 'LESSON', label: member, sub: `코치 ${coach}` }
+    for (let s = 0; s < slotCount; s++) {
+      schedule[lesson.court_id][startSlot + s] = { type: 'LESSON', label: member, sub: `코치 ${coach}` }
     }
   }
 
   for (const res of reservations ?? []) {
     if (!res.court_id) continue
-    const startHour = new Date(res.start_at).getUTCHours()
-    const endHour   = new Date(res.end_at).getUTCHours()
     if (!schedule[res.court_id]) schedule[res.court_id] = {}
-    for (let h = startHour; h < endHour; h++) {
-      schedule[res.court_id][h] = {
-        id: res.id,          // ← 수정/삭제에 필요한 reservation ID
+    for (const slot of utcIsoRangeToSlotIndices(res.start_at, res.end_at)) {
+      schedule[res.court_id][slot] = {
+        id: res.id,
         type: res.type as Slot['type'],
         label: res.title,
         sub: res.reserver_name ?? undefined,

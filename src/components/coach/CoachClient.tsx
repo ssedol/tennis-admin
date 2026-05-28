@@ -2,6 +2,18 @@
 
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
+import { getWeekdayFromDate, WEEKDAY_OPTIONS, type Weekday } from '@/lib/lesson-recurrence'
+import {
+  DEFAULT_START_SLOT,
+  formatStoredScheduleDate,
+  formatStoredScheduleTimeRange,
+  LESSON_DURATION_OPTIONS,
+  storedScheduleDateKey,
+  TIME_SLOT_OPTIONS,
+  slotIndexToTimeLabel,
+} from '@/lib/time-slots'
+import { canCoachDeleteLesson, type LessonDeleteTarget } from '@/lib/lesson-delete'
+import { DeleteConfirmModal } from '@/components/ui/DeleteConfirmModal'
 
 type Period = 'today' | 'weekly' | 'monthly'
 type Member = { id: string; name: string }
@@ -11,6 +23,7 @@ type Lesson = {
   scheduled_at: string
   duration_min: number
   status: string
+  created_by: string
   member: { name: string } | { name: string }[] | null
   court: { name: string } | { name: string }[] | null
 }
@@ -22,6 +35,7 @@ interface Props {
   members: Member[]
   courts: Court[]
   lessons: Lesson[]
+  coachProfileId: string
 }
 
 const PERIOD_TABS: { id: Period; label: string; param: string }[] = [
@@ -35,25 +49,16 @@ function getName(val: { name: string } | { name: string }[] | null | undefined):
   return Array.isArray(val) ? (val[0]?.name ?? '—') : val.name
 }
 
-function formatTimeRange(iso: string, durationMin: number) {
-  const start = new Date(iso)
-  const end = new Date(start.getTime() + durationMin * 60_000)
-  const fmt = (d: Date) =>
-    d.toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit', hour12: false })
-  return `${fmt(start)} — ${fmt(end)}`
+function formatDateLabel(iso: string) {
+  return formatStoredScheduleDate(iso)
 }
 
-function formatDateLabel(iso: string) {
-  return new Date(iso).toLocaleDateString('ko-KR', {
-    month: 'long',
-    day: 'numeric',
-    weekday: 'short',
-  })
+function formatTimeShort(iso: string, durationMin: number) {
+  return formatStoredScheduleTimeRange(iso, durationMin)
 }
 
 function dateKey(iso: string) {
-  const d = new Date(iso)
-  return `${d.getUTCFullYear()}-${d.getUTCMonth()}-${d.getUTCDate()}`
+  return storedScheduleDateKey(iso)
 }
 
 const STATUS_STYLE: Record<string, { label: string; className: string }> = {
@@ -63,81 +68,112 @@ const STATUS_STYLE: Record<string, { label: string; className: string }> = {
   CANCELLED: { label: '취소', className: 'bg-red-500/10 text-red-400' },
 }
 
-const DURATION_OPTIONS = [
-  { value: 60, label: '1시간' },
-  { value: 90, label: '1시간 30분' },
-  { value: 120, label: '2시간' },
-]
+const DURATION_OPTIONS = LESSON_DURATION_OPTIONS
 
 function todayDateStr() {
   const d = new Date()
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
 }
 
-function LessonCard({
+function addWeeksDateStr(dateStr: string, weeks: number) {
+  const [y, m, d] = dateStr.split('-').map(Number)
+  const date = new Date(y, m - 1, d)
+  date.setDate(date.getDate() + weeks * 7)
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`
+}
+
+function sortLessonsByTime(lessons: Lesson[]) {
+  return [...lessons].sort(
+    (a, b) => new Date(a.scheduled_at).getTime() - new Date(b.scheduled_at).getTime()
+  )
+}
+
+function LessonRow({
   lesson,
-  showDate,
   actionLoading,
   onStart,
   onEnd,
   onFeedback,
+  onDeleteRequest,
+  coachProfileId,
 }: {
   lesson: Lesson
-  showDate?: boolean
   actionLoading?: string | null
+  coachProfileId: string
   onStart?: (id: string) => void
   onEnd?: (id: string) => void
   onFeedback?: (id: string) => void
+  onDeleteRequest?: (target: LessonDeleteTarget) => void
 }) {
   const s = STATUS_STYLE[lesson.status] ?? STATUS_STYLE.SCHEDULED
   const memberName = getName(lesson.member)
+  const courtName = getName(lesson.court)
   const loading = actionLoading === lesson.id
+  const timeLabel = formatTimeShort(lesson.scheduled_at, lesson.duration_min)
 
   return (
-    <div className={`bg-card border rounded-xl p-4 ${lesson.status === 'IN_PROGRESS' ? 'border-volta/20' : 'border-border'}`}>
-      <div className="flex items-start justify-between mb-4">
-        <div>
-          {showDate && (
-            <p className="text-[11px] text-muted-foreground mb-1">{formatDateLabel(lesson.scheduled_at)}</p>
-          )}
-          <p className="text-sm font-semibold">{formatTimeRange(lesson.scheduled_at, lesson.duration_min)}</p>
-          <p className="text-xs text-muted-foreground mt-0.5">{getName(lesson.court)}</p>
-        </div>
-        <span className={`text-[10px] font-medium px-2 py-1 rounded-full ${s.className}`}>{s.label}</span>
-      </div>
-      <div className="h-px bg-border mb-4" />
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-2.5">
-          <div className="w-7 h-7 rounded-full bg-secondary border border-border flex items-center justify-center text-[11px] text-muted-foreground">
-            {memberName[0]}
-          </div>
-          <p className="text-sm font-medium">{memberName}</p>
-        </div>
+    <div
+      className={`flex items-center gap-2 sm:gap-3 px-3 py-2.5 bg-card border rounded-xl ${
+        lesson.status === 'IN_PROGRESS' ? 'border-volta/20' : 'border-border'
+      }`}
+    >
+      <span className="text-xs sm:text-sm font-semibold tabular-nums shrink-0 text-foreground w-[92px] sm:w-[100px]">
+        {timeLabel}
+      </span>
 
+      <div className="flex-1 min-w-0 flex items-center gap-1.5">
+        <span className="text-sm font-medium truncate">{memberName}</span>
+        {courtName !== '—' && (
+          <>
+            <span className="text-muted-foreground shrink-0">·</span>
+            <span className="text-xs text-muted-foreground truncate max-w-[72px] sm:max-w-none">
+              {courtName}
+            </span>
+          </>
+        )}
+        {canCoachDeleteLesson(lesson.status, lesson.created_by, coachProfileId) && onDeleteRequest && (
+          <button
+            type="button"
+            onClick={() =>
+              onDeleteRequest({ id: lesson.id, memberName, courtName, timeLabel })
+            }
+            disabled={loading}
+            className="ml-0.5 shrink-0 text-[10px] px-1.5 py-0.5 rounded-md border border-red-500/25 text-red-400/90 hover:bg-red-500/10 hover:text-red-400 transition-colors disabled:opacity-50"
+          >
+            {loading ? '…' : '삭제'}
+          </button>
+        )}
+      </div>
+
+      <span className={`text-[10px] font-medium px-2 py-0.5 rounded-full shrink-0 ${s.className}`}>
+        {s.label}
+      </span>
+
+      <div className="flex items-center gap-1.5 shrink-0">
         {lesson.status === 'SCHEDULED' && onStart && (
           <button
             onClick={() => onStart(lesson.id)}
             disabled={loading}
-            className="text-xs px-3 py-1.5 rounded-lg bg-volta text-black font-semibold hover:opacity-90 transition-opacity disabled:opacity-50"
+            className="text-[11px] px-2.5 py-1 rounded-lg bg-volta text-black font-semibold hover:opacity-90 transition-opacity disabled:opacity-50"
           >
-            {loading ? '처리 중...' : '레슨 시작'}
+            {loading ? '…' : '시작'}
           </button>
         )}
         {lesson.status === 'IN_PROGRESS' && onEnd && (
           <button
             onClick={() => onEnd(lesson.id)}
             disabled={loading}
-            className="text-xs px-3 py-1.5 rounded-lg border border-border bg-secondary text-muted-foreground hover:text-foreground transition-colors disabled:opacity-50"
+            className="text-[11px] px-2.5 py-1 rounded-lg border border-border bg-secondary text-muted-foreground hover:text-foreground transition-colors disabled:opacity-50"
           >
-            {loading ? '처리 중...' : '레슨 종료'}
+            {loading ? '…' : '종료'}
           </button>
         )}
         {lesson.status === 'COMPLETED' && onFeedback && (
           <button
             onClick={() => onFeedback(lesson.id)}
-            className="text-xs px-3 py-1.5 rounded-lg border border-border bg-secondary text-muted-foreground hover:text-foreground transition-colors"
+            className="text-[11px] px-2.5 py-1 rounded-lg border border-border bg-secondary text-muted-foreground hover:text-foreground transition-colors"
           >
-            피드백 보기
+            피드백
           </button>
         )}
       </div>
@@ -152,24 +188,28 @@ function groupByDate(lessons: Lesson[]) {
     if (!map.has(key)) map.set(key, [])
     map.get(key)!.push(l)
   }
-  return [...map.entries()].map(([key, items]) => ({
-    key,
-    label: formatDateLabel(items[0].scheduled_at),
-    items,
-  }))
+  return [...map.entries()]
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(([key, items]) => ({
+      key,
+      label: formatDateLabel(items[0].scheduled_at),
+      items: sortLessonsByTime(items),
+    }))
 }
 
 type LessonActions = {
   actionLoading: string | null
+  coachProfileId: string
   onStart: (id: string) => void
   onEnd: (id: string) => void
   onFeedback: (id: string) => void
+  onDeleteRequest: (target: LessonDeleteTarget) => void
 }
 
 function TodayView({ lessons, actions }: { lessons: Lesson[]; actions: LessonActions }) {
-  const inProgress = lessons.filter((l) => l.status === 'IN_PROGRESS')
-  const scheduled = lessons.filter((l) => l.status === 'SCHEDULED')
-  const completed = lessons.filter((l) => l.status === 'COMPLETED')
+  const inProgress = sortLessonsByTime(lessons.filter((l) => l.status === 'IN_PROGRESS'))
+  const scheduled = sortLessonsByTime(lessons.filter((l) => l.status === 'SCHEDULED'))
+  const completed = sortLessonsByTime(lessons.filter((l) => l.status === 'COMPLETED'))
 
   if (lessons.length === 0) {
     return (
@@ -179,31 +219,31 @@ function TodayView({ lessons, actions }: { lessons: Lesson[]; actions: LessonAct
     )
   }
 
-  const cardProps = { ...actions }
+  const rowProps = { ...actions }
 
   return (
     <>
       {inProgress.length > 0 && (
         <>
-          <p className="text-[11px] font-semibold uppercase tracking-widest text-muted-foreground mb-3">진행 중</p>
-          <div className="space-y-2 mb-6">
-            {inProgress.map((l) => <LessonCard key={l.id} lesson={l} {...cardProps} />)}
+          <p className="text-[11px] font-semibold uppercase tracking-widest text-muted-foreground mb-2">진행 중</p>
+          <div className="space-y-1.5 mb-5">
+            {inProgress.map((l) => <LessonRow key={l.id} lesson={l} {...rowProps} />)}
           </div>
         </>
       )}
       {scheduled.length > 0 && (
         <>
-          <p className="text-[11px] font-semibold uppercase tracking-widest text-muted-foreground mb-3">예정</p>
-          <div className="space-y-2 mb-6">
-            {scheduled.map((l) => <LessonCard key={l.id} lesson={l} {...cardProps} />)}
+          <p className="text-[11px] font-semibold uppercase tracking-widest text-muted-foreground mb-2">예정</p>
+          <div className="space-y-1.5 mb-5">
+            {scheduled.map((l) => <LessonRow key={l.id} lesson={l} {...rowProps} />)}
           </div>
         </>
       )}
       {completed.length > 0 && (
         <>
-          <p className="text-[11px] font-semibold uppercase tracking-widest text-muted-foreground mb-3">완료</p>
-          <div className="space-y-2">
-            {completed.map((l) => <LessonCard key={l.id} lesson={l} {...cardProps} />)}
+          <p className="text-[11px] font-semibold uppercase tracking-widest text-muted-foreground mb-2">완료</p>
+          <div className="space-y-1.5">
+            {completed.map((l) => <LessonRow key={l.id} lesson={l} {...rowProps} />)}
           </div>
         </>
       )}
@@ -211,7 +251,50 @@ function TodayView({ lessons, actions }: { lessons: Lesson[]; actions: LessonAct
   )
 }
 
-function PeriodView({
+function useToggleSet() {
+  const [openKeys, setOpenKeys] = useState<Set<string>>(() => new Set())
+
+  function toggle(key: string) {
+    setOpenKeys((prev) => {
+      const next = new Set(prev)
+      if (next.has(key)) next.delete(key)
+      else next.add(key)
+      return next
+    })
+  }
+
+  return { openKeys, toggle }
+}
+
+function CollapsibleDayCard({
+  label,
+  count,
+  open,
+  onToggle,
+  children,
+}: {
+  label: string
+  count: number
+  open: boolean
+  onToggle: () => void
+  children: React.ReactNode
+}) {
+  return (
+    <div className="border border-border rounded-xl overflow-hidden">
+      <button
+        type="button"
+        onClick={onToggle}
+        className="w-full flex items-center justify-between px-4 py-3 bg-card hover:bg-secondary/30 transition-colors text-left"
+      >
+        <span className="text-sm font-semibold">{label}</span>
+        <span className="text-xs text-muted-foreground">{count}건</span>
+      </button>
+      {open && <div className="px-4 pb-4 pt-3 border-t border-border space-y-1.5">{children}</div>}
+    </div>
+  )
+}
+
+function WeeklyView({
   lessons,
   emptyLabel,
   actions,
@@ -220,6 +303,8 @@ function PeriodView({
   emptyLabel: string
   actions: LessonActions
 }) {
+  const { openKeys, toggle } = useToggleSet()
+
   if (lessons.length === 0) {
     return (
       <div className="text-center py-12 text-sm text-muted-foreground">
@@ -229,37 +314,86 @@ function PeriodView({
   }
 
   const groups = groupByDate(lessons)
-  const cardProps = { ...actions }
+  const rowProps = { ...actions }
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-3">
       {groups.map((g) => (
-        <div key={g.key}>
-          <p className="text-[11px] font-semibold uppercase tracking-widest text-muted-foreground mb-3">
-            {g.label} · {g.items.length}건
-          </p>
-          <div className="space-y-2">
-            {g.items.map((l) => <LessonCard key={l.id} lesson={l} {...cardProps} />)}
-          </div>
-        </div>
+        <CollapsibleDayCard
+          key={g.key}
+          label={g.label}
+          count={g.items.length}
+          open={openKeys.has(g.key)}
+          onToggle={() => toggle(g.key)}
+        >
+          {g.items.map((l) => (
+            <LessonRow key={l.id} lesson={l} {...rowProps} />
+          ))}
+        </CollapsibleDayCard>
       ))}
     </div>
   )
 }
 
-export function CoachClient({ period, title, sub, members, courts, lessons }: Props) {
+function MonthlyView({
+  lessons,
+  emptyLabel,
+  actions,
+}: {
+  lessons: Lesson[]
+  emptyLabel: string
+  actions: LessonActions
+}) {
+  const { openKeys, toggle } = useToggleSet()
+
+  if (lessons.length === 0) {
+    return (
+      <div className="text-center py-12 text-sm text-muted-foreground">
+        {emptyLabel}
+      </div>
+    )
+  }
+
+  const groups = groupByDate(lessons)
+  const rowProps = { ...actions }
+
+  return (
+    <div className="space-y-3">
+      {groups.map((g) => (
+        <CollapsibleDayCard
+          key={g.key}
+          label={g.label}
+          count={g.items.length}
+          open={openKeys.has(g.key)}
+          onToggle={() => toggle(g.key)}
+        >
+          {g.items.map((l) => (
+            <LessonRow key={l.id} lesson={l} {...rowProps} />
+          ))}
+        </CollapsibleDayCard>
+      ))}
+    </div>
+  )
+}
+
+export function CoachClient({ period, title, sub, members, courts, lessons, coachProfileId }: Props) {
   const router = useRouter()
   const [showForm, setShowForm] = useState(false)
   const [submitting, setSubmitting] = useState(false)
   const [actionLoading, setActionLoading] = useState<string | null>(null)
+  const [deleteTarget, setDeleteTarget] = useState<LessonDeleteTarget | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [done, setDone] = useState(false)
+  const [createdCount, setCreatedCount] = useState(1)
   const [form, setForm] = useState({
     memberId: '',
     courtId: courts[0]?.id ?? '',
     date: todayDateStr(),
-    startHour: '10',
+    startSlot: String(DEFAULT_START_SLOT),
     durationMin: '60',
+    repeat: false,
+    repeatEndDate: addWeeksDateStr(todayDateStr(), 4),
+    repeatWeekdays: [] as Weekday[],
   })
 
   function switchPeriod(next: Period) {
@@ -268,15 +402,20 @@ export function CoachClient({ period, title, sub, members, courts, lessons }: Pr
   }
 
   function openForm() {
+    const today = todayDateStr()
     setForm({
       memberId: members[0]?.id ?? '',
       courtId: courts[0]?.id ?? '',
-      date: todayDateStr(),
-      startHour: '10',
+      date: today,
+      startSlot: String(DEFAULT_START_SLOT),
       durationMin: '60',
+      repeat: false,
+      repeatEndDate: addWeeksDateStr(today, 4),
+      repeatWeekdays: [getWeekdayFromDate(today)],
     })
     setError(null)
     setDone(false)
+    setCreatedCount(1)
     setShowForm(true)
   }
 
@@ -308,11 +447,30 @@ export function CoachClient({ period, title, sub, members, courts, lessons }: Pr
     router.push(`/coach/lessons/${id}`)
   }
 
+  async function handleDeleteConfirm() {
+    if (!deleteTarget) return
+
+    setActionLoading(deleteTarget.id)
+    const res = await fetch(`/api/lessons/${deleteTarget.id}`, { method: 'DELETE' })
+    setActionLoading(null)
+
+    if (!res.ok) {
+      const json = await res.json()
+      alert(json.error ?? '삭제 중 오류가 발생했습니다')
+      return
+    }
+
+    setDeleteTarget(null)
+    router.refresh()
+  }
+
   const lessonActions: LessonActions = {
     actionLoading,
+    coachProfileId,
     onStart: handleStart,
     onEnd: handleEnd,
     onFeedback: handleFeedback,
+    onDeleteRequest: setDeleteTarget,
   }
 
   async function handleSubmit(e: React.FormEvent) {
@@ -321,28 +479,45 @@ export function CoachClient({ period, title, sub, members, courts, lessons }: Pr
       setError('회원과 코트를 선택하세요')
       return
     }
+    if (form.repeat && form.repeatEndDate < form.date) {
+      setError('반복 종료일은 시작일 이후여야 합니다')
+      return
+    }
+    if (form.repeat && form.repeatWeekdays.length === 0) {
+      setError('반복 요일을 하나 이상 선택하세요')
+      return
+    }
 
     setSubmitting(true)
     setError(null)
 
+    const payload: Record<string, unknown> = {
+      member_id: form.memberId,
+      court_id: form.courtId,
+      date: form.date,
+      start_time: slotIndexToTimeLabel(Number(form.startSlot)),
+      duration_min: Number(form.durationMin),
+    }
+    if (form.repeat) {
+      payload.repeat_until = form.repeatEndDate
+      payload.repeat_weekdays = form.repeatWeekdays
+    }
+
     const res = await fetch('/api/lessons', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        member_id: form.memberId,
-        court_id: form.courtId,
-        date: form.date,
-        start_hour: Number(form.startHour),
-        duration_min: Number(form.durationMin),
-      }),
+      body: JSON.stringify(payload),
     })
 
     const json = await res.json()
     setSubmitting(false)
 
     if (!res.ok) {
-      setError(json.error ?? '오류가 발생했습니다')
+      const msg = json.error ?? '오류가 발생했습니다'
+      setError(msg)
+      if (res.status === 409) alert(msg)
     } else {
+      setCreatedCount(json.count ?? 1)
       setDone(true)
       router.refresh()
     }
@@ -384,9 +559,9 @@ export function CoachClient({ period, title, sub, members, courts, lessons }: Pr
       {period === 'today' ? (
         <TodayView lessons={lessons} actions={lessonActions} />
       ) : period === 'weekly' ? (
-        <PeriodView lessons={lessons} emptyLabel="이번 주 등록된 레슨이 없습니다" actions={lessonActions} />
+        <WeeklyView lessons={lessons} emptyLabel="이번 주 등록된 레슨이 없습니다" actions={lessonActions} />
       ) : (
-        <PeriodView lessons={lessons} emptyLabel="이번 달 등록된 레슨이 없습니다" actions={lessonActions} />
+        <MonthlyView lessons={lessons} emptyLabel="이번 달 등록된 레슨이 없습니다" actions={lessonActions} />
       )}
 
       {showForm && (
@@ -409,7 +584,9 @@ export function CoachClient({ period, title, sub, members, courts, lessons }: Pr
                     <path d="M20 6L9 17l-5-5" />
                   </svg>
                 </div>
-                <p className="text-sm font-semibold text-white">레슨이 등록됐습니다</p>
+                <p className="text-sm font-semibold text-white">
+                  {createdCount > 1 ? `레슨 ${createdCount}건이 등록됐습니다` : '레슨이 등록됐습니다'}
+                </p>
                 <button
                   onClick={() => { setDone(false); setShowForm(false) }}
                   className="text-xs text-muted-foreground underline underline-offset-2"
@@ -456,27 +633,103 @@ export function CoachClient({ period, title, sub, members, courts, lessons }: Pr
                 </div>
 
                 <div>
-                  <label className="text-xs text-zinc-400 mb-1.5 block">날짜 *</label>
+                  <label className="text-xs text-zinc-400 mb-1.5 block">시작 날짜 *</label>
                   <input
                     required
                     type="date"
                     value={form.date}
-                    onChange={(e) => setForm((f) => ({ ...f, date: e.target.value }))}
+                    onChange={(e) => {
+                      const date = e.target.value
+                      setForm((f) => ({
+                        ...f,
+                        date,
+                        repeatEndDate: f.repeatEndDate < date ? date : f.repeatEndDate,
+                      }))
+                    }}
                     className="w-full px-3.5 py-2.5 bg-zinc-800 border border-zinc-600 rounded-lg text-sm text-white outline-none focus:border-volta transition-colors"
                   />
                 </div>
+
+                <label className="flex items-center gap-2.5 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={form.repeat}
+                    onChange={(e) => {
+                      const repeat = e.target.checked
+                      setForm((f) => ({
+                        ...f,
+                        repeat,
+                        repeatWeekdays:
+                          repeat && f.repeatWeekdays.length === 0
+                            ? [getWeekdayFromDate(f.date)]
+                            : f.repeatWeekdays,
+                      }))
+                    }}
+                    className="w-4 h-4 rounded border-zinc-600 bg-zinc-800 text-volta focus:ring-volta focus:ring-offset-zinc-900"
+                  />
+                  <span className="text-sm text-white">반복 등록</span>
+                </label>
+
+                {form.repeat && (
+                  <>
+                    <div>
+                      <label className="text-xs text-zinc-400 mb-1.5 block">반복 요일 *</label>
+                      <div className="grid grid-cols-7 gap-1">
+                        {WEEKDAY_OPTIONS.map(({ value, label }) => {
+                          const selected = form.repeatWeekdays.includes(value)
+                          return (
+                            <button
+                              key={value}
+                              type="button"
+                              onClick={() =>
+                                setForm((f) => ({
+                                  ...f,
+                                  repeatWeekdays: selected
+                                    ? f.repeatWeekdays.filter((d) => d !== value)
+                                    : [...f.repeatWeekdays, value].sort((a, b) => a - b),
+                                }))
+                              }
+                              className={`py-2 rounded-lg text-sm font-medium transition-colors ${
+                                selected
+                                  ? 'bg-volta text-black'
+                                  : 'bg-zinc-800 border border-zinc-600 text-zinc-400 hover:text-white'
+                              }`}
+                            >
+                              {label}
+                            </button>
+                          )
+                        })}
+                      </div>
+                    </div>
+
+                    <div>
+                      <label className="text-xs text-zinc-400 mb-1.5 block">반복 종료일 *</label>
+                      <input
+                        required
+                        type="date"
+                        min={form.date}
+                        value={form.repeatEndDate}
+                        onChange={(e) => setForm((f) => ({ ...f, repeatEndDate: e.target.value }))}
+                        className="w-full px-3.5 py-2.5 bg-zinc-800 border border-zinc-600 rounded-lg text-sm text-white outline-none focus:border-volta transition-colors"
+                      />
+                      <p className="text-[11px] text-zinc-500 mt-1.5">
+                        시작일부터 선택한 요일마다 종료일까지 레슨이 등록됩니다
+                      </p>
+                    </div>
+                  </>
+                )}
 
                 <div className="grid grid-cols-2 gap-3">
                   <div>
                     <label className="text-xs text-zinc-400 mb-1.5 block">시작 시간 *</label>
                     <select
                       required
-                      value={form.startHour}
-                      onChange={(e) => setForm((f) => ({ ...f, startHour: e.target.value }))}
+                      value={form.startSlot}
+                      onChange={(e) => setForm((f) => ({ ...f, startSlot: e.target.value }))}
                       className="w-full px-3.5 py-2.5 bg-zinc-800 border border-zinc-600 rounded-lg text-sm text-white outline-none focus:border-volta transition-colors"
                     >
-                      {Array.from({ length: 24 }, (_, h) => (
-                        <option key={h} value={String(h)}>{String(h).padStart(2, '0')}:00</option>
+                      {TIME_SLOT_OPTIONS.map(({ value, label }) => (
+                        <option key={value} value={String(value)}>{label}</option>
                       ))}
                     </select>
                   </div>
@@ -509,6 +762,23 @@ export function CoachClient({ period, title, sub, members, courts, lessons }: Pr
           </div>
         </div>
       )}
+
+      <DeleteConfirmModal
+        open={deleteTarget !== null}
+        description={
+          deleteTarget
+            ? `${deleteTarget.timeLabel} · ${deleteTarget.memberName}${
+                deleteTarget.courtName !== '—' ? ` · ${deleteTarget.courtName}` : ''
+              }\n\n이 레슨을 삭제합니다. 삭제 후 복구할 수 없습니다.`
+            : ''
+        }
+        confirming={deleteTarget !== null && actionLoading === deleteTarget.id}
+        onCancel={() => {
+          if (actionLoading) return
+          setDeleteTarget(null)
+        }}
+        onConfirm={handleDeleteConfirm}
+      />
     </>
   )
 }

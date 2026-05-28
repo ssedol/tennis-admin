@@ -4,6 +4,7 @@
 export type UserRole = 'OWNER' | 'COACH' | 'MEMBER'
 export type LessonStatus = 'SCHEDULED' | 'IN_PROGRESS' | 'COMPLETED' | 'CANCELLED'
 export type LogType = 'LESSON' | 'PRACTICE' | 'MATCH'
+export type LessonHistoryAction = 'CREATED' | 'DELETED'
 export type NotificationType = 'LESSON_REMINDER' | 'VIDEO_UPLOADED' | 'FEEDBACK_ADDED'
 
 export interface Database {
@@ -35,7 +36,9 @@ export interface Database {
           id: string
           organization_id: string
           coach_id: string
+          created_by: string
           member_id: string
+          court_id: string | null
           scheduled_at: string
           duration_min: number
           status: LessonStatus
@@ -45,6 +48,24 @@ export interface Database {
         }
         Insert: Omit<Database['public']['Tables']['lesson_schedules']['Row'], 'id' | 'created_at'>
         Update: Partial<Database['public']['Tables']['lesson_schedules']['Insert']>
+      }
+      lesson_schedule_history: {
+        Row: {
+          id: string
+          organization_id: string
+          lesson_id: string
+          action: LessonHistoryAction
+          actor_id: string | null
+          coach_id: string
+          member_id: string
+          court_id: string | null
+          scheduled_at: string
+          duration_min: number
+          status: LessonStatus
+          created_at: string
+        }
+        Insert: Omit<Database['public']['Tables']['lesson_schedule_history']['Row'], 'id' | 'created_at'>
+        Update: Partial<Database['public']['Tables']['lesson_schedule_history']['Insert']>
       }
       lesson_feedbacks: {
         Row: {

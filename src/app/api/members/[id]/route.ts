@@ -3,6 +3,7 @@ import { createClient as createAdminClient } from '@supabase/supabase-js'
 import { createServerClient } from '@supabase/ssr'
 import { cookies } from 'next/headers'
 import { getSupabaseEnv } from '@/lib/supabase/env'
+import { recordLessonHistory } from '@/lib/lesson-history'
 
 async function getCallerProfile() {
   const { url, anonKey } = getSupabaseEnv()
@@ -19,7 +20,7 @@ async function getCallerProfile() {
   const admin = createAdminClient(url, process.env.SUPABASE_SERVICE_ROLE_KEY!, {
     auth: { autoRefreshToken: false, persistSession: false },
   })
-  const { data: profile } = await admin.from('profiles').select('organization_id, role').eq('id', user.id).single()
+  const { data: profile } = await admin.from('profiles').select('id, organization_id, role').eq('id', user.id).single()
   return profile
 }
 
@@ -88,7 +89,7 @@ export async function DELETE(_request: NextRequest, { params }: { params: Promis
 
   // 4. 이 유저가 참여한 레슨의 관련 데이터
   const { data: lessons } = await admin
-    .from('lesson_schedules').select('id')
+    .from('lesson_schedules').select('id, organization_id, coach_id, member_id, court_id, scheduled_at, duration_min, status')
     .or(`coach_id.eq.${id},member_id.eq.${id}`)
   const lessonIds = (lessons ?? []).map((l) => l.id)
 
@@ -101,6 +102,16 @@ export async function DELETE(_request: NextRequest, { params }: { params: Promis
     }
     await admin.from('lesson_feedbacks').delete().in('lesson_id', lessonIds)
     await admin.from('tennis_logs').delete().in('lesson_id', lessonIds)
+
+    try {
+      await recordLessonHistory(admin, 'DELETED', profile.id, lessons ?? [])
+    } catch (historyError) {
+      return NextResponse.json(
+        { error: historyError instanceof Error ? historyError.message : '이력 기록에 실패했습니다' },
+        { status: 500 }
+      )
+    }
+
     await admin.from('lesson_schedules').delete().in('id', lessonIds)
   }
 

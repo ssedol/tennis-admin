@@ -3,50 +3,53 @@ import { MemberClient } from '@/components/member/MemberClient'
 import { createClient } from '@/lib/supabase/server'
 import { createClient as createAdminClient } from '@supabase/supabase-js'
 import { redirect } from 'next/navigation'
+import {
+  formatStoredScheduleDate,
+  formatStoredScheduleTime,
+  getKoreaYmd,
+  storedScheduleDateKey,
+} from '@/lib/time-slots'
 
 function getName(val: { name: string } | { name: string }[] | null | undefined): string {
   if (!val) return '—'
   return Array.isArray(val) ? (val[0]?.name ?? '—') : val.name
 }
 
+function koreaTodayKey(): string {
+  const { y, m, d } = getKoreaYmd()
+  return `${y}-${String(m + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`
+}
+
+function dayDiffFromToday(iso: string): number {
+  const lessonKey = storedScheduleDateKey(iso)
+  const todayKey = koreaTodayKey()
+  const lessonDate = new Date(`${lessonKey}T00:00:00Z`)
+  const todayDate = new Date(`${todayKey}T00:00:00Z`)
+  return Math.round((lessonDate.getTime() - todayDate.getTime()) / (24 * 60 * 60 * 1000))
+}
+
 function formatNextLessonTime(iso: string): string {
-  const d = new Date(iso)
-  const now = new Date()
-  const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate())
-  const targetStart = new Date(d.getFullYear(), d.getMonth(), d.getDate())
-  const dayDiff = Math.round((targetStart.getTime() - todayStart.getTime()) / (24 * 60 * 60 * 1000))
-  const time = d.toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit', hour12: false })
+  const dayDiff = dayDiffFromToday(iso)
+  const time = formatStoredScheduleTime(iso)
 
   if (dayDiff === 0) return `오늘 ${time}`
   if (dayDiff === 1) return `내일 ${time}`
-  return `${d.toLocaleDateString('ko-KR', { month: 'long', day: 'numeric' })} ${time}`
+  return `${formatStoredScheduleDate(iso)} ${time}`
 }
 
 function formatNextLessonDate(iso: string): string {
-  return new Date(iso).toLocaleDateString('ko-KR', {
-    month: 'long',
-    day: 'numeric',
-    weekday: 'long',
-  })
+  return formatStoredScheduleDate(iso)
 }
 
 function getDaysUntil(iso: string): string {
-  const target = new Date(iso)
-  const now = new Date()
-  const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate())
-  const targetStart = new Date(target.getFullYear(), target.getMonth(), target.getDate())
-  const diff = Math.round((targetStart.getTime() - todayStart.getTime()) / (24 * 60 * 60 * 1000))
-
+  const diff = dayDiffFromToday(iso)
   if (diff === 0) return 'D-Day'
   if (diff > 0) return `D-${diff}`
   return `D+${Math.abs(diff)}`
 }
 
 function formatPastLessonDate(iso: string): string {
-  const d = new Date(iso)
-  const date = d.toLocaleDateString('ko-KR', { month: 'long', day: 'numeric', weekday: 'short' })
-  const time = d.toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit', hour12: false })
-  return `${date} ${time}`
+  return `${formatStoredScheduleDate(iso)} ${formatStoredScheduleTime(iso)}`
 }
 
 function formatFeedbackSummary(feedbackCount: number, videoCount: number): string {

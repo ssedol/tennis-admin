@@ -1,6 +1,15 @@
 'use client'
 
 import { useCallback, useRef, useState } from 'react'
+import {
+  getCurrentSlotIndex,
+  slotIndexToTimeLabel,
+  slotRangeToUtcIso,
+  SLOTS_PER_DAY,
+  TIME_SLOT_OPTIONS,
+} from '@/lib/time-slots'
+
+const SLOTS = Array.from({ length: SLOTS_PER_DAY }, (_, i) => i)
 
 type SlotType = 'LESSON' | 'CLUB' | 'EXTERNAL' | 'BLOCK' | 'EMPTY'
 
@@ -24,7 +33,6 @@ type CourtScheduleGridProps = {
   date: string  // YYYY-MM-DD
 }
 
-const HOURS = Array.from({ length: 24 }, (_, i) => i)
 
 const SURFACE_LABEL: Record<string, string> = {
   HARD:            '하드',
@@ -58,16 +66,12 @@ const TYPE_OPTIONS: { value: Exclude<SlotType, 'EMPTY'>; label: string }[] = [
 // 등록 폼 기본값 (레슨 제외)
 const DEFAULT_FORM_TYPE: Exclude<SlotType, 'EMPTY' | 'LESSON'> = 'CLUB'
 
-function formatHour(h: number) {
-  return `${String(h).padStart(2, '0')}:00`
-}
-
 // ─── 예약 저장/수정 공용 폼 컴포넌트 ──────────────────────────────
 type ReservationFormProps = {
   title: string
   courtName: string
-  startHour: number
-  endHour: number
+  startSlot: number
+  endSlot: number
   type: Exclude<SlotType, 'EMPTY'>
   label: string
   saving: boolean
@@ -81,7 +85,7 @@ type ReservationFormProps = {
 }
 
 function ReservationForm({
-  title, courtName, startHour, endHour, type, label, saving, error,
+  title, courtName, startSlot, endSlot, type, label, saving, error,
   onChangeType, onChangeLabel, onChangeStart, onChangeEnd, onSave, onClose,
 }: ReservationFormProps) {
   return (
@@ -104,20 +108,22 @@ function ReservationForm({
         <label className="text-xs text-zinc-400 mb-1.5 block">시간</label>
         <div className="flex items-center gap-2 mb-4">
           <select
-            value={startHour}
+            value={startSlot}
             onChange={(e) => onChangeStart(Number(e.target.value))}
             className="flex-1 px-3 py-2.5 bg-zinc-800 border border-zinc-600 rounded-lg text-sm text-white outline-none focus:border-volta"
           >
-            {HOURS.map((h) => <option key={h} value={h}>{formatHour(h)}</option>)}
+            {TIME_SLOT_OPTIONS.map(({ value, label: timeLabel }) => (
+              <option key={value} value={value}>{timeLabel}</option>
+            ))}
           </select>
           <span className="text-zinc-500 text-sm shrink-0">~</span>
           <select
-            value={endHour}
+            value={endSlot}
             onChange={(e) => onChangeEnd(Number(e.target.value))}
             className="flex-1 px-3 py-2.5 bg-zinc-800 border border-zinc-600 rounded-lg text-sm text-white outline-none focus:border-volta"
           >
-            {HOURS.filter((h) => h >= startHour).map((h) => (
-              <option key={h} value={h}>{formatHour(h)}</option>
+            {TIME_SLOT_OPTIONS.filter(({ value }) => value >= startSlot).map(({ value, label: timeLabel }) => (
+              <option key={value} value={value}>{timeLabel}</option>
             ))}
           </select>
         </div>
@@ -178,7 +184,7 @@ export function CourtScheduleGrid({ courts, schedule: initialSchedule, date }: C
   const [schedule, setSchedule] = useState(initialSchedule)
 
   // 신규 등록 폼
-  const [pending, setPending] = useState<{ courtId: string; startHour: number; endHour: number } | null>(null)
+  const [pending, setPending] = useState<{ courtId: string; startSlot: number; endSlot: number } | null>(null)
   const [formType,  setFormType]  = useState<Exclude<SlotType, 'EMPTY'>>('CLUB')
   const [formLabel, setFormLabel] = useState('')
   const [formStart, setFormStart] = useState(0)
@@ -187,7 +193,7 @@ export function CourtScheduleGrid({ courts, schedule: initialSchedule, date }: C
   const [formError, setFormError] = useState<string | null>(null)
 
   // 상세 / 수정 팝업
-  const [detail, setDetail] = useState<{ court: Court; startHour: number; endHour: number; slot: Slot } | null>(null)
+  const [detail, setDetail] = useState<{ court: Court; startSlot: number; endSlot: number; slot: Slot } | null>(null)
   const [editMode,    setEditMode]    = useState(false)
   const [editType,    setEditType]    = useState<Exclude<SlotType, 'EMPTY'>>('CLUB')
   const [editLabel,   setEditLabel]   = useState('')
@@ -197,7 +203,7 @@ export function CourtScheduleGrid({ courts, schedule: initialSchedule, date }: C
   const [editError,   setEditError]   = useState<string | null>(null)
   const [confirmDelete, setConfirmDelete] = useState(false)
 
-  const nowHour = new Date().getHours()
+  const nowSlot = getCurrentSlotIndex()
   const isToday = date === new Date().toISOString().slice(0, 10)
 
   // 헤더↔바디 가로 스크롤 동기화
@@ -212,24 +218,22 @@ export function CourtScheduleGrid({ courts, schedule: initialSchedule, date }: C
 
   // 코트 열 너비 (헤더·바디 동일하게 사용해야 정렬 유지)
   const COURT_COL = 100  // px
-  const TIME_COL  = 60   // px
+  const TIME_COL  = 52   // px
 
   // ─── 셀 탭 ────────────────────────────────────────────────────
-  function handleCellTap(court: Court, hour: number) {
-    const slot = schedule[court.id]?.[hour]
-    if (slot && slot.type !== 'EMPTY') {
-      // 기존 슬롯 → 상세 팝업
-      setDetail({ court, startHour: hour, endHour: hour, slot })
+  function handleCellTap(court: Court, slot: number) {
+    const slotData = schedule[court.id]?.[slot]
+    if (slotData && slotData.type !== 'EMPTY') {
+      setDetail({ court, startSlot: slot, endSlot: slot, slot: slotData })
       setEditMode(false)
       setConfirmDelete(false)
     } else {
-      // 빈 슬롯 → 신규 등록 폼 (탭한 시간이 시작 시간)
       setFormType('CLUB')
       setFormLabel('')
-      setFormStart(hour)
-      setFormEnd(hour)
+      setFormStart(slot)
+      setFormEnd(slot)
       setFormError(null)
-      setPending({ courtId: court.id, startHour: hour, endHour: hour })
+      setPending({ courtId: court.id, startSlot: slot, endSlot: slot })
     }
   }
 
@@ -240,15 +244,7 @@ export function CourtScheduleGrid({ courts, schedule: initialSchedule, date }: C
 
     const start = Math.min(formStart, formEnd)
     const end   = Math.max(formStart, formEnd)
-    const startAt = `${date}T${String(start).padStart(2, '0')}:00:00Z`
-    let endAt: string
-    if (end + 1 < 24) {
-      endAt = `${date}T${String(end + 1).padStart(2, '0')}:00:00Z`
-    } else {
-      const nextDay = new Date(`${date}T00:00:00Z`)
-      nextDay.setUTCDate(nextDay.getUTCDate() + 1)
-      endAt = nextDay.toISOString().slice(0, 10) + 'T00:00:00Z'
-    }
+    const { start_at: startAt, end_at: endAt } = slotRangeToUtcIso(date, start, end)
 
     setSaving(true)
     const res = await fetch('/api/court-reservations', {
@@ -262,8 +258,8 @@ export function CourtScheduleGrid({ courts, schedule: initialSchedule, date }: C
 
     setSchedule((prev) => {
       const next = { ...prev, [pending.courtId]: { ...(prev[pending.courtId] ?? {}) } }
-      for (let h = start; h <= end; h++) {
-        next[pending.courtId][h] = { id: json.reservation?.id, type: formType, label: formLabel.trim() || '사용 불가' }
+      for (let s = start; s <= end; s++) {
+        next[pending.courtId][s] = { id: json.reservation?.id, type: formType, label: formLabel.trim() || '사용 불가' }
       }
       return next
     })
@@ -275,8 +271,8 @@ export function CourtScheduleGrid({ courts, schedule: initialSchedule, date }: C
     if (!detail) return
     setEditType(detail.slot.type as Exclude<SlotType, 'EMPTY'>)
     setEditLabel(detail.slot.label ?? '')
-    setEditStart(detail.startHour)
-    setEditEnd(detail.endHour)
+    setEditStart(detail.startSlot)
+    setEditEnd(detail.endSlot)
     setEditError(null)
     setEditMode(true)
   }
@@ -288,15 +284,7 @@ export function CourtScheduleGrid({ courts, schedule: initialSchedule, date }: C
 
     const start = Math.min(editStart, editEnd)
     const end   = Math.max(editStart, editEnd)
-    const startAt = `${date}T${String(start).padStart(2, '0')}:00:00Z`
-    let endAt: string
-    if (end + 1 < 24) {
-      endAt = `${date}T${String(end + 1).padStart(2, '0')}:00:00Z`
-    } else {
-      const nextDay = new Date(`${date}T00:00:00Z`)
-      nextDay.setUTCDate(nextDay.getUTCDate() + 1)
-      endAt = nextDay.toISOString().slice(0, 10) + 'T00:00:00Z'
-    }
+    const { start_at: startAt, end_at: endAt } = slotRangeToUtcIso(date, start, end)
 
     setEditSaving(true)
     const res = await fetch(`/api/court-reservations/${detail.slot.id}`, {
@@ -312,11 +300,11 @@ export function CourtScheduleGrid({ courts, schedule: initialSchedule, date }: C
 
     setSchedule((prev) => {
       const courtMap = { ...(prev[detail.court.id] ?? {}) }
-      for (const h of Object.keys(courtMap).map(Number)) {
-        if (courtMap[h]?.id === detail.slot.id) delete courtMap[h]
+      for (const s of Object.keys(courtMap).map(Number)) {
+        if (courtMap[s]?.id === detail.slot.id) delete courtMap[s]
       }
-      for (let h = start; h <= end; h++) {
-        courtMap[h] = { id: detail.slot.id, type: editType, label: editLabel.trim() || '사용 불가' }
+      for (let s = start; s <= end; s++) {
+        courtMap[s] = { id: detail.slot.id, type: editType, label: editLabel.trim() || '사용 불가' }
       }
       return { ...prev, [detail.court.id]: courtMap }
     })
@@ -330,8 +318,8 @@ export function CourtScheduleGrid({ courts, schedule: initialSchedule, date }: C
     await fetch(`/api/court-reservations/${detail.slot.id}`, { method: 'DELETE' })
     setSchedule((prev) => {
       const courtMap = { ...(prev[detail.court.id] ?? {}) }
-      for (const h of Object.keys(courtMap).map(Number)) {
-        if (courtMap[h]?.id === detail.slot.id) delete courtMap[h]
+      for (const s of Object.keys(courtMap).map(Number)) {
+        if (courtMap[s]?.id === detail.slot.id) delete courtMap[s]
       }
       return { ...prev, [detail.court.id]: courtMap }
     })
@@ -420,36 +408,41 @@ export function CourtScheduleGrid({ courts, schedule: initialSchedule, date }: C
           className="border-l border-r border-b border-white/15 rounded-b-xl overflow-hidden"
           style={{ minWidth: `${courts.length * 80 + TIME_COL}px` }}
         >
-          {HOURS.map((hour) => {
-            const isPast    = isToday && hour < nowHour
-            const isCurrent = isToday && hour === nowHour
+          {SLOTS.map((slot) => {
+            const isPast    = isToday && slot < nowSlot
+            const isCurrent = isToday && slot === nowSlot
+            const isHourMark = slot % 3 === 0
             return (
               <div
-                key={hour}
+                key={slot}
                 className={`flex border-t border-white/10 ${isPast ? 'opacity-35' : ''} ${
-                  isCurrent ? 'bg-amber-400/5' : hour % 2 === 0 ? 'bg-white/[0.015]' : ''
+                  isCurrent ? 'bg-amber-400/5' : slot % 6 === 0 ? 'bg-white/[0.015]' : ''
                 }`}
               >
                 {/* 시간 레이블 */}
                 <div
-                  className={`shrink-0 flex items-center justify-end pr-3 py-0.5 tabular-nums select-none ${
-                    isCurrent ? 'text-amber-400 text-xs font-bold' : 'text-zinc-400 text-[11px]'
+                  className={`shrink-0 flex items-center justify-end pr-2 py-0 tabular-nums select-none ${
+                    isCurrent
+                      ? 'text-amber-400 text-[11px] font-bold'
+                      : isHourMark
+                        ? 'text-zinc-400 text-[11px]'
+                        : 'text-zinc-500 text-[10px]'
                   }`}
                   style={{ width: `${TIME_COL}px` }}
                 >
-                  {formatHour(hour)}
-                  {isCurrent && <span className="ml-1.5 w-1.5 h-1.5 rounded-full bg-amber-400 animate-pulse" />}
+                  {slotIndexToTimeLabel(slot)}
+                  {isCurrent && <span className="ml-1 w-1.5 h-1.5 rounded-full bg-amber-400 animate-pulse" />}
                 </div>
 
                 {/* 코트별 셀 */}
                 {courts.map((court, i) => {
-                  const slot     = schedule[court.id]?.[hour]
-                  const slotType = slot?.type ?? 'EMPTY'
+                  const slotData = schedule[court.id]?.[slot]
+                  const slotType = slotData?.type ?? 'EMPTY'
                   return (
                     <button
                       key={court.id}
-                      onClick={() => handleCellTap(court, hour)}
-                      className={`flex-1 min-w-[80px] h-11 text-left px-2.5 transition-colors ${
+                      onClick={() => handleCellTap(court, slot)}
+                      className={`flex-1 min-w-[80px] h-8 text-left px-2 transition-colors ${
                         i > 0 ? 'border-l border-white/10' : ''
                       } ${
                         slotType !== 'EMPTY'
@@ -458,8 +451,8 @@ export function CourtScheduleGrid({ courts, schedule: initialSchedule, date }: C
                       }`}
                     >
                       {slotType !== 'EMPTY' && (
-                        <p className="text-[11px] font-semibold leading-tight truncate drop-shadow-sm">
-                          {slot?.label}
+                        <p className="text-[10px] font-semibold leading-tight truncate drop-shadow-sm">
+                          {slotData?.label}
                         </p>
                       )}
                     </button>
@@ -476,8 +469,8 @@ export function CourtScheduleGrid({ courts, schedule: initialSchedule, date }: C
         <ReservationForm
           title="예약 추가"
           courtName={courts.find((c) => c.id === pending.courtId)?.name ?? ''}
-          startHour={formStart}
-          endHour={formEnd}
+          startSlot={formStart}
+          endSlot={formEnd}
           type={formType}
           label={formLabel}
           saving={saving}
@@ -498,7 +491,7 @@ export function CourtScheduleGrid({ courts, schedule: initialSchedule, date }: C
           <div className="relative bg-zinc-900 border border-zinc-700 rounded-2xl shadow-2xl p-6 w-full max-w-sm">
             <div className="flex items-start justify-between mb-1">
               <p className="text-xs text-zinc-400">
-                {detail.court.name} · {formatHour(detail.startHour)}
+                {detail.court.name} · {slotIndexToTimeLabel(detail.startSlot)}
               </p>
               <button onClick={() => setDetail(null)} className="text-zinc-400 hover:text-white p-1 -mt-1">
                 <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
@@ -553,8 +546,8 @@ export function CourtScheduleGrid({ courts, schedule: initialSchedule, date }: C
         <ReservationForm
           title="예약 수정"
           courtName={detail.court.name}
-          startHour={editStart}
-          endHour={editEnd}
+          startSlot={editStart}
+          endSlot={editEnd}
           type={editType}
           label={editLabel}
           saving={editSaving}

@@ -2,47 +2,43 @@ import { LogoutButton } from '@/components/layout/LogoutButton'
 import { CoachClient } from '@/components/coach/CoachClient'
 import { createClient } from '@/lib/supabase/server'
 import { createClient as createAdminClient } from '@supabase/supabase-js'
+import { getKoreaYmd, koreaDateToUtcIso } from '@/lib/time-slots'
 
 type Period = 'today' | 'weekly' | 'monthly'
 
 function getPeriodRange(period: Period) {
-  const now = new Date()
-  const y = now.getUTCFullYear()
-  const m = now.getUTCMonth()
-  const d = now.getUTCDate()
+  const { y, m, d } = getKoreaYmd()
 
   if (period === 'today') {
     return {
-      start: new Date(Date.UTC(y, m, d)).toISOString(),
-      end: new Date(Date.UTC(y, m, d + 1)).toISOString(),
+      start: koreaDateToUtcIso(y, m, d),
+      end: koreaDateToUtcIso(y, m, d + 1),
     }
   }
 
   if (period === 'weekly') {
-    const dow = now.getUTCDay()
+    const dow = new Date(Date.UTC(y, m, d)).getUTCDay()
     const mondayOffset = dow === 0 ? -6 : 1 - dow
     const startDay = d + mondayOffset
     return {
-      start: new Date(Date.UTC(y, m, startDay)).toISOString(),
-      end: new Date(Date.UTC(y, m, startDay + 7)).toISOString(),
+      start: koreaDateToUtcIso(y, m, startDay),
+      end: koreaDateToUtcIso(y, m, startDay + 7),
     }
   }
 
   return {
-    start: new Date(Date.UTC(y, m, 1)).toISOString(),
-    end: new Date(Date.UTC(y, m + 1, 1)).toISOString(),
+    start: koreaDateToUtcIso(y, m, 1),
+    end: koreaDateToUtcIso(y, m + 1, 1),
   }
 }
 
 function getPeriodMeta(period: Period, count: number) {
-  const now = new Date()
-  const y = now.getUTCFullYear()
-  const m = now.getUTCMonth()
-  const d = now.getUTCDate()
+  const { y, m, d } = getKoreaYmd()
+  const koreaToday = new Date(Date.UTC(y, m, d))
 
   if (period === 'today') {
-    const dayLabel = now.toLocaleDateString('ko-KR', { month: 'long', day: 'numeric' })
-    const weekday = now.toLocaleDateString('ko-KR', { weekday: 'long' })
+    const dayLabel = koreaToday.toLocaleDateString('ko-KR', { month: 'long', day: 'numeric', timeZone: 'UTC' })
+    const weekday = koreaToday.toLocaleDateString('ko-KR', { weekday: 'long', timeZone: 'UTC' })
     return {
       title: `오늘 · ${dayLabel}`,
       sub: `${weekday} · 레슨 ${count}건`,
@@ -50,18 +46,23 @@ function getPeriodMeta(period: Period, count: number) {
   }
 
   if (period === 'weekly') {
-    const dow = now.getUTCDay()
+    const dow = new Date(Date.UTC(y, m, d)).getUTCDay()
     const mondayOffset = dow === 0 ? -6 : 1 - dow
     const start = new Date(Date.UTC(y, m, d + mondayOffset))
     const end = new Date(Date.UTC(y, m, d + mondayOffset + 6))
-    const fmt = (dt: Date) => dt.toLocaleDateString('ko-KR', { month: 'long', day: 'numeric' })
+    const fmt = (dt: Date) =>
+      dt.toLocaleDateString('ko-KR', { month: 'long', day: 'numeric', timeZone: 'UTC' })
     return {
       title: '이번 주',
       sub: `${fmt(start)} — ${fmt(end)} · 레슨 ${count}건`,
     }
   }
 
-  const monthLabel = now.toLocaleDateString('ko-KR', { year: 'numeric', month: 'long' })
+  const monthLabel = koreaToday.toLocaleDateString('ko-KR', {
+    year: 'numeric',
+    month: 'long',
+    timeZone: 'UTC',
+  })
   return {
     title: monthLabel,
     sub: `레슨 ${count}건`,
@@ -112,7 +113,7 @@ export default async function CoachPage({
     admin
       .from('lesson_schedules')
       .select(`
-        id, scheduled_at, duration_min, status,
+        id, scheduled_at, duration_min, status, created_by,
         member:profiles!member_id(name),
         court:courts(name)
       `)
@@ -127,6 +128,7 @@ export default async function CoachPage({
     scheduled_at: string
     duration_min: number
     status: string
+    created_by: string
     member: { name: string } | { name: string }[] | null
     court: { name: string } | { name: string }[] | null
   }
@@ -151,6 +153,7 @@ export default async function CoachPage({
         members={membersRes.data ?? []}
         courts={courtsRes.data ?? []}
         lessons={lessons}
+        coachProfileId={coachId!}
       />
     </main>
   )

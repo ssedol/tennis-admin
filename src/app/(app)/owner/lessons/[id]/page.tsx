@@ -24,7 +24,6 @@ export default function OwnerLessonDetailPage({ params }: { params: Promise<{ id
 
   return (
     <main className="max-w-screen-sm mx-auto px-5 pb-10">
-      {/* 헤더 */}
       <header className="flex items-center gap-3 py-5">
         <Link
           href="/owner"
@@ -40,7 +39,6 @@ export default function OwnerLessonDetailPage({ params }: { params: Promise<{ id
         </div>
       </header>
 
-      {/* 레슨 정보 카드 */}
       <div className="bg-card border border-border rounded-xl p-4 mb-6">
         <div className="flex items-center justify-between mb-3">
           <span className={`text-[10px] font-medium px-2.5 py-1 rounded-full ${lesson.statusClass}`}>
@@ -60,7 +58,6 @@ export default function OwnerLessonDetailPage({ params }: { params: Promise<{ id
         </div>
       </div>
 
-      {/* 탭 */}
       <nav className="flex gap-1 border-b border-border mb-6">
         {([
           { id: 'feedback', label: '피드백' },
@@ -81,9 +78,8 @@ export default function OwnerLessonDetailPage({ params }: { params: Promise<{ id
         ))}
       </nav>
 
-      {/* 탭 콘텐츠 */}
-      {tab === 'feedback' && <FeedbackThread lessonId={id} />}
-      {tab === 'video'    && <VideoFeedback  lessonId={id} />}
+      {tab === 'feedback' && <FeedbackThread lessonId={id} readOnly />}
+      {tab === 'video'    && <VideoFeedback  lessonId={id} readOnly />}
     </main>
   )
 }
