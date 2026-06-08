@@ -5,7 +5,7 @@ import { createClient as createAdminClient } from '@supabase/supabase-js'
 import { getKoreaYmd, koreaDateToUtcIso } from '@/lib/time-slots'
 import Link from 'next/link'
 
-type Period = 'today' | 'weekly' | 'monthly'
+type Period = 'today' | 'weekly' | 'monthly' | 'past'
 
 function getPeriodRange(period: Period) {
   const { y, m, d } = getKoreaYmd()
@@ -19,10 +19,17 @@ function getPeriodRange(period: Period) {
     const startDay = d + mondayOffset
     return { start: koreaDateToUtcIso(y, m, startDay), end: koreaDateToUtcIso(y, m, startDay + 7) }
   }
+  if (period === 'past') {
+    return { start: null, end: koreaDateToUtcIso(y, m, d) }
+  }
   return { start: koreaDateToUtcIso(y, m, 1), end: koreaDateToUtcIso(y, m + 1, 1) }
 }
 
 function getPeriodMeta(period: Period, count: number) {
+  if (period === 'past') {
+    return { title: '지난 레슨', sub: `총 ${count}건` }
+  }
+
   const { y, m, d } = getKoreaYmd()
   const koreaToday = new Date(Date.UTC(y, m, d))
 
@@ -49,7 +56,11 @@ export default async function CoachLessonsPage({
   searchParams: Promise<{ period?: string }>
 }) {
   const { period: rawPeriod } = await searchParams
-  const period: Period = rawPeriod === 'weekly' || rawPeriod === 'monthly' ? rawPeriod : 'today'
+  const period: Period =
+    rawPeriod === 'weekly' ? 'weekly' :
+    rawPeriod === 'monthly' ? 'monthly' :
+    rawPeriod === 'past' ? 'past' :
+    'today'
 
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
@@ -68,16 +79,6 @@ export default async function CoachLessonsPage({
 
   const orgId = profile?.organization_id
   const coachId = profile?.id
-  const { start, end } = getPeriodRange(period)
-
-  const [membersRes, lessonsRes] = await Promise.all([
-    admin.from('profiles').select('id, name').eq('organization_id', orgId!).eq('role', 'MEMBER').order('name'),
-    admin.from('lesson_schedules').select(`
-      id, scheduled_at, duration_min, status, created_by,
-      member:profiles!member_id(name),
-      court:courts(name)
-    `).eq('coach_id', coachId!).gte('scheduled_at', start).lt('scheduled_at', end).order('scheduled_at'),
-  ])
 
   type LessonRow = {
     id: string
@@ -87,9 +88,41 @@ export default async function CoachLessonsPage({
     created_by: string
     member: { name: string } | { name: string }[] | null
     court: { name: string } | { name: string }[] | null
+    feedbackCount?: number
   }
 
-  const lessons = (lessonsRes.data ?? []) as unknown as LessonRow[]
+  let lessons: LessonRow[]
+
+  if (period === 'past') {
+    const { end } = getPeriodRange('past')
+    type PastRaw = LessonRow & { lesson_feedbacks: { id: string }[] | null }
+    const res = await admin.from('lesson_schedules').select(`
+      id, scheduled_at, duration_min, status, created_by,
+      member:profiles!member_id(name),
+      court:courts(name),
+      lesson_feedbacks(id)
+    `).eq('coach_id', coachId!).lt('scheduled_at', end!).order('scheduled_at', { ascending: false }).limit(500)
+    lessons = ((res.data ?? []) as unknown as PastRaw[]).map((l) => ({
+      id: l.id,
+      scheduled_at: l.scheduled_at,
+      duration_min: l.duration_min,
+      status: l.status,
+      created_by: l.created_by,
+      member: l.member,
+      court: l.court,
+      feedbackCount: l.lesson_feedbacks?.length ?? 0,
+    }))
+  } else {
+    const { start, end } = getPeriodRange(period)
+    const res = await admin.from('lesson_schedules').select(`
+      id, scheduled_at, duration_min, status, created_by,
+      member:profiles!member_id(name),
+      court:courts(name)
+    `).eq('coach_id', coachId!).gte('scheduled_at', start!).lt('scheduled_at', end!).order('scheduled_at')
+    lessons = (res.data ?? []) as unknown as LessonRow[]
+  }
+
+  const membersRes = await admin.from('profiles').select('id, name').eq('organization_id', orgId!).eq('role', 'MEMBER').order('name')
   const meta = getPeriodMeta(period, lessons.length)
 
   return (

@@ -15,7 +15,7 @@ import {
 import { canCoachDeleteLesson, type LessonDeleteTarget } from '@/lib/lesson-delete'
 import { DeleteConfirmModal } from '@/components/ui/DeleteConfirmModal'
 
-type Period = 'today' | 'weekly' | 'monthly'
+type Period = 'today' | 'weekly' | 'monthly' | 'past'
 type Member = { id: string; name: string }
 type Lesson = {
   id: string
@@ -25,6 +25,7 @@ type Lesson = {
   created_by: string
   member: { name: string } | { name: string }[] | null
   court: { name: string } | { name: string }[] | null
+  feedbackCount?: number
 }
 
 interface Props {
@@ -40,6 +41,7 @@ const PERIOD_TABS: { id: Period; label: string; param: string }[] = [
   { id: 'today', label: '오늘', param: '' },
   { id: 'weekly', label: '주간', param: 'weekly' },
   { id: 'monthly', label: '월간', param: 'monthly' },
+  { id: 'past', label: '지난', param: 'past' },
 ]
 
 function getName(val: { name: string } | { name: string }[] | null | undefined): string {
@@ -374,6 +376,134 @@ function MonthlyView({
   )
 }
 
+function groupByMonth(lessons: Lesson[]) {
+  const map = new Map<string, Lesson[]>()
+  for (const l of lessons) {
+    const dt = new Date(l.scheduled_at)
+    const key = `${dt.getUTCFullYear()}-${String(dt.getUTCMonth() + 1).padStart(2, '0')}`
+    if (!map.has(key)) map.set(key, [])
+    map.get(key)!.push(l)
+  }
+  return [...map.entries()]
+    .sort(([a], [b]) => b.localeCompare(a))
+    .map(([key, items]) => {
+      const [y, mo] = key.split('-').map(Number)
+      return { key, label: `${y}년 ${mo}월`, items }
+    })
+}
+
+function PastLessonRow({
+  lesson,
+  onView,
+}: {
+  lesson: Lesson
+  onView: (id: string) => void
+}) {
+  const s = STATUS_STYLE[lesson.status] ?? STATUS_STYLE.SCHEDULED
+  const memberName = getName(lesson.member)
+  const courtName = getName(lesson.court)
+  const timeLabel = formatTimeShort(lesson.scheduled_at, lesson.duration_min)
+
+  return (
+    <div className="flex items-center gap-2 sm:gap-3 px-3 py-2.5 bg-card border border-border rounded-xl">
+      <span className="text-xs sm:text-sm font-semibold tabular-nums shrink-0 text-foreground w-[92px] sm:w-[100px]">
+        {timeLabel}
+      </span>
+      <div className="flex-1 min-w-0 flex items-center gap-1.5">
+        <span className="text-sm font-medium truncate">{memberName}</span>
+        {courtName !== '—' && (
+          <>
+            <span className="text-muted-foreground shrink-0">·</span>
+            <span className="text-xs text-muted-foreground truncate max-w-[72px] sm:max-w-none">
+              {courtName}
+            </span>
+          </>
+        )}
+      </div>
+      <span className={`text-[10px] font-medium px-2 py-0.5 rounded-full shrink-0 ${s.className}`}>
+        {s.label}
+      </span>
+      {typeof lesson.feedbackCount === 'number' && lesson.feedbackCount > 0 && (
+        <span className="text-[10px] text-volta shrink-0">
+          피드백 {lesson.feedbackCount}
+        </span>
+      )}
+      <button
+        onClick={() => onView(lesson.id)}
+        className="text-[11px] px-2.5 py-1 rounded-lg border border-border bg-secondary text-muted-foreground hover:text-foreground transition-colors shrink-0"
+      >
+        보기
+      </button>
+    </div>
+  )
+}
+
+function PastView({
+  lessons,
+  onView,
+}: {
+  lessons: Lesson[]
+  onView: (id: string) => void
+}) {
+  const { openKeys: openMonths, toggle: toggleMonth } = useToggleSet()
+  const { openKeys: openDays, toggle: toggleDay } = useToggleSet()
+
+  if (lessons.length === 0) {
+    return (
+      <div className="text-center py-12 text-sm text-muted-foreground">
+        지난 레슨이 없습니다
+      </div>
+    )
+  }
+
+  const monthGroups = groupByMonth(lessons)
+
+  return (
+    <div className="space-y-3">
+      {monthGroups.map((mg) => {
+        const dayGroups = groupByDate(mg.items).reverse()
+        return (
+          <div key={mg.key} className="border border-border rounded-xl overflow-hidden">
+            <button
+              type="button"
+              onClick={() => toggleMonth(mg.key)}
+              className="w-full flex items-center justify-between px-4 py-3 bg-card hover:bg-secondary/30 transition-colors text-left"
+            >
+              <span className="text-sm font-semibold">{mg.label}</span>
+              <div className="flex items-center gap-2">
+                <span className="text-xs text-muted-foreground">{mg.items.length}건</span>
+                <svg
+                  className={`w-4 h-4 text-muted-foreground transition-transform duration-150 ${openMonths.has(mg.key) ? 'rotate-180' : ''}`}
+                  viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}
+                >
+                  <path d="M6 9l6 6 6-6" />
+                </svg>
+              </div>
+            </button>
+            {openMonths.has(mg.key) && (
+              <div className="border-t border-border p-3 space-y-2">
+                {dayGroups.map((dg) => (
+                  <CollapsibleDayCard
+                    key={dg.key}
+                    label={dg.label}
+                    count={dg.items.length}
+                    open={openDays.has(dg.key)}
+                    onToggle={() => toggleDay(dg.key)}
+                  >
+                    {dg.items.map((l) => (
+                      <PastLessonRow key={l.id} lesson={l} onView={onView} />
+                    ))}
+                  </CollapsibleDayCard>
+                ))}
+              </div>
+            )}
+          </div>
+        )
+      })}
+    </div>
+  )
+}
+
 export function CoachClient({ period, title, sub, members, lessons, coachProfileId }: Props) {
   const router = useRouter()
   const [showForm, setShowForm] = useState(false)
@@ -555,6 +685,8 @@ export function CoachClient({ period, title, sub, members, lessons, coachProfile
         <TodayView lessons={lessons} actions={lessonActions} />
       ) : period === 'weekly' ? (
         <WeeklyView lessons={lessons} emptyLabel="이번 주 등록된 레슨이 없습니다" actions={lessonActions} />
+      ) : period === 'past' ? (
+        <PastView lessons={lessons} onView={handleFeedback} />
       ) : (
         <MonthlyView lessons={lessons} emptyLabel="이번 달 등록된 레슨이 없습니다" actions={lessonActions} />
       )}
