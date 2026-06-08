@@ -17,7 +17,6 @@ import { DeleteConfirmModal } from '@/components/ui/DeleteConfirmModal'
 
 type Period = 'today' | 'weekly' | 'monthly'
 type Member = { id: string; name: string }
-type Court = { id: string; name: string }
 type Lesson = {
   id: string
   scheduled_at: string
@@ -33,7 +32,6 @@ interface Props {
   title: string
   sub: string
   members: Member[]
-  courts: Court[]
   lessons: Lesson[]
   coachProfileId: string
 }
@@ -135,7 +133,7 @@ function LessonRow({
           <button
             type="button"
             onClick={() =>
-              onDeleteRequest({ id: lesson.id, memberName, courtName, timeLabel })
+              onDeleteRequest({ id: lesson.id, memberName, timeLabel })
             }
             disabled={loading}
             className="ml-0.5 shrink-0 text-[10px] px-1.5 py-0.5 rounded-md border border-red-500/25 text-red-400/90 hover:bg-red-500/10 hover:text-red-400 transition-colors disabled:opacity-50"
@@ -376,7 +374,7 @@ function MonthlyView({
   )
 }
 
-export function CoachClient({ period, title, sub, members, courts, lessons, coachProfileId }: Props) {
+export function CoachClient({ period, title, sub, members, lessons, coachProfileId }: Props) {
   const router = useRouter()
   const [showForm, setShowForm] = useState(false)
   const [submitting, setSubmitting] = useState(false)
@@ -387,7 +385,6 @@ export function CoachClient({ period, title, sub, members, courts, lessons, coac
   const [createdCount, setCreatedCount] = useState(1)
   const [form, setForm] = useState({
     memberId: '',
-    courtId: courts[0]?.id ?? '',
     date: todayDateStr(),
     startSlot: String(DEFAULT_START_SLOT),
     durationMin: '60',
@@ -398,14 +395,13 @@ export function CoachClient({ period, title, sub, members, courts, lessons, coac
 
   function switchPeriod(next: Period) {
     const param = PERIOD_TABS.find((t) => t.id === next)?.param
-    router.push(param ? `/coach?period=${param}` : '/coach')
+    router.push(param ? `/coach/lessons?period=${param}` : '/coach/lessons')
   }
 
   function openForm() {
     const today = todayDateStr()
     setForm({
       memberId: members[0]?.id ?? '',
-      courtId: courts[0]?.id ?? '',
       date: today,
       startSlot: String(DEFAULT_START_SLOT),
       durationMin: '60',
@@ -475,8 +471,8 @@ export function CoachClient({ period, title, sub, members, courts, lessons, coac
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
-    if (!form.memberId || !form.courtId) {
-      setError('회원과 코트를 선택하세요')
+    if (!form.memberId) {
+      setError('회원을 선택하세요')
       return
     }
     if (form.repeat && form.repeatEndDate < form.date) {
@@ -493,7 +489,6 @@ export function CoachClient({ period, title, sub, members, courts, lessons, coac
 
     const payload: Record<string, unknown> = {
       member_id: form.memberId,
-      court_id: form.courtId,
       date: form.date,
       start_time: slotIndexToTimeLabel(Number(form.startSlot)),
       duration_min: Number(form.durationMin),
@@ -611,24 +606,6 @@ export function CoachClient({ period, title, sub, members, courts, lessons, coac
                   </select>
                   {members.length === 0 && (
                     <p className="text-xs text-red-400 mt-1">등록 가능한 회원이 없습니다</p>
-                  )}
-                </div>
-
-                <div>
-                  <label className="text-xs text-zinc-400 mb-1.5 block">코트 *</label>
-                  <select
-                    required
-                    value={form.courtId}
-                    onChange={(e) => setForm((f) => ({ ...f, courtId: e.target.value }))}
-                    className="w-full px-3.5 py-2.5 bg-zinc-800 border border-zinc-600 rounded-lg text-sm text-white outline-none focus:border-volta transition-colors"
-                  >
-                    <option value="">선택</option>
-                    {courts.map((c) => (
-                      <option key={c.id} value={c.id}>{c.name}</option>
-                    ))}
-                  </select>
-                  {courts.length === 0 && (
-                    <p className="text-xs text-red-400 mt-1">등록된 코트가 없습니다</p>
                   )}
                 </div>
 
@@ -752,7 +729,7 @@ export function CoachClient({ period, title, sub, members, courts, lessons, coac
 
                 <button
                   type="submit"
-                  disabled={submitting || members.length === 0 || courts.length === 0}
+                  disabled={submitting || members.length === 0}
                   className="w-full py-3 rounded-xl bg-volta text-black text-sm font-semibold hover:opacity-90 transition-opacity disabled:opacity-50"
                 >
                   {submitting ? '등록 중...' : '레슨 등록'}
@@ -767,9 +744,7 @@ export function CoachClient({ period, title, sub, members, courts, lessons, coac
         open={deleteTarget !== null}
         description={
           deleteTarget
-            ? `${deleteTarget.timeLabel} · ${deleteTarget.memberName}${
-                deleteTarget.courtName !== '—' ? ` · ${deleteTarget.courtName}` : ''
-              }\n\n이 레슨을 삭제합니다. 삭제 후 복구할 수 없습니다.`
+            ? `${deleteTarget.timeLabel} · ${deleteTarget.memberName}\n\n이 레슨을 삭제합니다. 삭제 후 복구할 수 없습니다.`
             : ''
         }
         confirming={deleteTarget !== null && actionLoading === deleteTarget.id}

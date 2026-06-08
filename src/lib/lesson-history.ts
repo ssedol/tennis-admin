@@ -7,7 +7,7 @@ export type LessonHistorySnapshot = {
   organization_id: string
   coach_id: string
   member_id: string
-  court_id: string | null
+  court_id?: string | null
   scheduled_at: string
   duration_min: number
   status: string

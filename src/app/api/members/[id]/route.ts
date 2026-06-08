@@ -27,7 +27,8 @@ async function getCallerProfile() {
 export async function PATCH(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params
   const profile = await getCallerProfile()
-  if (!profile || (profile.role as string).toUpperCase() !== 'OWNER')
+  const callerRole = (profile?.role as string)?.toUpperCase()
+  if (!profile || (callerRole !== 'OWNER' && callerRole !== 'COACH'))
     return NextResponse.json({ error: '권한 없음' }, { status: 403 })
 
   const body = await request.json()
@@ -57,7 +58,8 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
 export async function DELETE(_request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params
   const profile = await getCallerProfile()
-  if (!profile || (profile.role as string).toUpperCase() !== 'OWNER')
+  const callerRoleDel = (profile?.role as string)?.toUpperCase()
+  if (!profile || (callerRoleDel !== 'OWNER' && callerRoleDel !== 'COACH'))
     return NextResponse.json({ error: '권한 없음' }, { status: 403 })
 
   const { url } = getSupabaseEnv()

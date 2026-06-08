@@ -90,7 +90,6 @@ export default async function MemberPage() {
     duration_min: number
     status: string
     coach: { name: string } | { name: string }[] | null
-    court: { name: string } | { name: string }[] | null
   }
 
   const [nextRes, pastRes, logsRes] = await Promise.all([
@@ -98,8 +97,7 @@ export default async function MemberPage() {
       .from('lesson_schedules')
       .select(`
         id, scheduled_at, duration_min, status,
-        coach:profiles!coach_id(name),
-        court:courts(name)
+        coach:profiles!coach_id(name)
       `)
       .eq('member_id', memberId!)
       .in('status', ['SCHEDULED', 'IN_PROGRESS'])
@@ -110,8 +108,7 @@ export default async function MemberPage() {
       .from('lesson_schedules')
       .select(`
         id, scheduled_at, duration_min, status,
-        coach:profiles!coach_id(name),
-        court:courts(name)
+        coach:profiles!coach_id(name)
       `)
       .eq('member_id', memberId!)
       .eq('status', 'COMPLETED')
@@ -149,14 +146,14 @@ export default async function MemberPage() {
         timeLabel: formatNextLessonTime(nextRaw.scheduled_at),
         dateLabel: formatNextLessonDate(nextRaw.scheduled_at),
         daysUntil: getDaysUntil(nextRaw.scheduled_at),
-        sub: `${getName(nextRaw.coach)} · ${getName(nextRaw.court)} · ${nextRaw.duration_min}분`,
+        sub: `${getName(nextRaw.coach)} · ${nextRaw.duration_min}분`,
       }
     : null
 
   const pastLessonItems = pastLessons.map((l) => ({
     id: l.id,
     date: formatPastLessonDate(l.scheduled_at),
-    coach: `${getName(l.coach)} · ${getName(l.court)}`,
+    coach: getName(l.coach),
     feedback: formatFeedbackSummary(feedbackCounts[l.id] ?? 0, videoCounts[l.id] ?? 0),
   }))
 

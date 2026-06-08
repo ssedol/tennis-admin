@@ -40,9 +40,12 @@ async function getLesson(lessonId: string) {
 
 function canUploadVideo(
   profile: { id: string; role: string },
-  lesson: { member_id: string }
+  lesson: { coach_id: string; member_id: string }
 ): boolean {
-  return (profile.role as string).toUpperCase() === 'MEMBER' && lesson.member_id === profile.id
+  const role = (profile.role as string).toUpperCase()
+  if (role === 'MEMBER') return lesson.member_id === profile.id
+  if (role === 'COACH') return lesson.coach_id === profile.id
+  return false
 }
 
 export async function GET(_request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
@@ -60,54 +63,68 @@ export async function GET(_request: NextRequest, { params }: { params: Promise<{
     auth: { autoRefreshToken: false, persistSession: false },
   })
 
-  const { data: video } = await admin
+  const { data: videos } = await admin
     .from('videos')
-    .select('id, storage_path, duration_sec')
+    .select('id, storage_path, duration_sec, uploader_id')
     .eq('lesson_id', lessonId)
-    .order('created_at', { ascending: false })
-    .limit(1)
-    .maybeSingle()
 
-  if (!video) return NextResponse.json({ video: null, comments: [], canUpload: canUploadVideo(profile, lesson) })
+  const coachVideoRow = (videos ?? []).find((v) => v.uploader_id === lesson.coach_id) ?? null
+  const memberVideoRow = (videos ?? []).find((v) => v.uploader_id === lesson.member_id) ?? null
 
-  const { data: signed } = await admin.storage.from('lesson-videos').createSignedUrl(video.storage_path, 3600)
+  const profileId = profile.id
 
-  const { data: commentRows, error } = await admin
-    .from('video_comments')
-    .select('id, timestamp_sec, content, author_id')
-    .eq('video_id', video.id)
-    .order('timestamp_sec')
+  async function buildVideo(row: { id: string; storage_path: string; duration_sec: number | null; uploader_id: string } | null) {
+    if (!row) return null
 
-  if (error) return NextResponse.json({ error: error.message }, { status: 400 })
+    const [signedResult, commentResult] = await Promise.all([
+      admin.storage.from('lesson-videos').createSignedUrl(row.storage_path, 3600),
+      admin.from('video_comments').select('id, timestamp_sec, content, author_id').eq('video_id', row.id).order('timestamp_sec'),
+    ])
 
-  const authorIds = [...new Set((commentRows ?? []).map((c) => c.author_id))]
-  const { data: profiles } = authorIds.length > 0
-    ? await admin.from('profiles').select('id, name, role').in('id', authorIds)
-    : { data: [] as ProfileRow[] }
+    const commentRows = commentResult.data ?? []
+    const authorIds = [...new Set(commentRows.map((c) => c.author_id))]
+    const { data: profiles } = authorIds.length > 0
+      ? await admin.from('profiles').select('id, name, role').in('id', authorIds)
+      : { data: [] as ProfileRow[] }
 
-  const profileMap = new Map<string, ProfileRow>(
-    ((profiles ?? []) as ProfileRow[]).map((p) => [p.id, p])
-  )
+    const profileMap = new Map<string, ProfileRow>(
+      ((profiles ?? []) as ProfileRow[]).map((p) => [p.id, p])
+    )
 
-  const comments = (commentRows ?? []).map((c) => {
-    const author = profileMap.get(c.author_id)
-    const role = (author?.role ?? 'COACH').toUpperCase()
+    const comments = commentRows.map((c) => {
+      const author = profileMap.get(c.author_id)
+      const role = (author?.role ?? 'COACH').toUpperCase()
+      return {
+        id: c.id,
+        author: author?.name ?? '—',
+        role: role === 'MEMBER' ? 'MEMBER' as const : 'COACH' as const,
+        timestamp: c.timestamp_sec,
+        content: c.content,
+      }
+    })
+
     return {
-      id: c.id,
-      author: author?.name ?? '—',
-      role: role === 'MEMBER' ? 'MEMBER' as const : 'COACH' as const,
-      timestamp: c.timestamp_sec,
-      content: c.content,
+      id: row.id,
+      storage_path: row.storage_path,
+      duration_sec: row.duration_sec,
+      url: signedResult.data?.signedUrl ?? null,
+      comments,
+      isUploader: row.uploader_id === profileId,
     }
-  })
+  }
+
+  const [coachVideo, memberVideo] = await Promise.all([
+    buildVideo(coachVideoRow),
+    buildVideo(memberVideoRow),
+  ])
+
+  const role = (profile.role as string).toUpperCase()
 
   return NextResponse.json({
-    video: {
-      ...video,
-      url: signed?.signedUrl ?? null,
-    },
-    comments,
+    coachVideo,
+    memberVideo,
     canUpload: canUploadVideo(profile, lesson),
+    myRole: role === 'MEMBER' ? 'MEMBER' : role === 'COACH' ? 'COACH' : null,
   })
 }
 
@@ -133,12 +150,15 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     return NextResponse.json({ error: '본인 레슨에만 댓글을 등록할 수 있습니다' }, { status: 403 })
   }
 
-  const body = await request.json() as { content?: string; timestamp_sec?: number }
+  const body = await request.json() as { content?: string; timestamp_sec?: number; videoId?: string }
   if (!body.content?.trim()) {
     return NextResponse.json({ error: '내용을 입력하세요' }, { status: 400 })
   }
   if (typeof body.timestamp_sec !== 'number' || body.timestamp_sec < 0) {
     return NextResponse.json({ error: '유효하지 않은 타임스탬프입니다' }, { status: 400 })
+  }
+  if (!body.videoId) {
+    return NextResponse.json({ error: '영상 ID가 필요합니다' }, { status: 400 })
   }
 
   const { url } = getSupabaseEnv()
@@ -150,9 +170,8 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     .from('videos')
     .select('id')
     .eq('lesson_id', lessonId)
-    .order('created_at', { ascending: false })
-    .limit(1)
-    .maybeSingle()
+    .eq('id', body.videoId)
+    .single()
 
   if (!video) return NextResponse.json({ error: '영상이 없습니다' }, { status: 404 })
 
@@ -179,4 +198,42 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       content: data.content,
     },
   })
+}
+
+export async function DELETE(_request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+  try {
+    const { id: lessonId } = await params
+    const profile = await getCallerProfile()
+    if (!profile) return NextResponse.json({ error: '인증 필요' }, { status: 401 })
+
+    const lesson = await getLesson(lessonId)
+    if (!lesson || !canWriteLessonFeedback(profile, lesson)) {
+      return NextResponse.json({ error: '권한 없음' }, { status: 403 })
+    }
+
+    const { url } = getSupabaseEnv()
+    const admin = createAdminClient(url, process.env.SUPABASE_SERVICE_ROLE_KEY!, {
+      auth: { autoRefreshToken: false, persistSession: false },
+    })
+
+    const { data: video } = await admin
+      .from('videos')
+      .select('id, storage_path')
+      .eq('lesson_id', lessonId)
+      .eq('uploader_id', profile.id)
+      .maybeSingle()
+
+    if (!video) return NextResponse.json({ error: '삭제할 영상이 없습니다' }, { status: 404 })
+
+    await admin.storage.from('lesson-videos').remove([video.storage_path])
+    await admin.from('videos').delete().eq('id', video.id)
+
+    return NextResponse.json({ ok: true })
+  } catch (err) {
+    console.error('[video DELETE] error:', err)
+    return NextResponse.json(
+      { error: err instanceof Error ? err.message : '오류가 발생했습니다' },
+      { status: 500 }
+    )
+  }
 }

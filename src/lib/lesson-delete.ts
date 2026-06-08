@@ -5,7 +5,7 @@ export const DELETABLE_LESSON_STATUSES = new Set(['SCHEDULED', 'IN_PROGRESS', 'C
 export type LessonDeleteTarget = {
   id: string
   memberName: string
-  courtName: string
+  courtName?: string
   timeLabel: string
 }
 

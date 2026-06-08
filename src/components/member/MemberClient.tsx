@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import Link from 'next/link'
 
 type Tab = 'lesson' | 'log'
@@ -114,6 +114,23 @@ function LogTab({ initialLogs }: { initialLogs: LogItem[] }) {
   const [logs, setLogs] = useState(initialLogs)
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
+
+  useEffect(() => {
+    fetch('/api/member/logs')
+      .then((r) => (r.ok ? r.json() : null))
+      .then((json) => {
+        if (!json?.logs) return
+        setLogs(
+          json.logs.map((l: { id: string; log_type: string; recorded_at: string; content: string | null }) => ({
+            id: l.id,
+            type: l.log_type as LogType,
+            date: new Date(l.recorded_at).toLocaleDateString('ko-KR', { month: 'long', day: 'numeric' }),
+            content: l.content ?? '',
+          }))
+        )
+      })
+      .catch(() => {/* 조용히 무시 — initialLogs 그대로 표시 */})
+  }, [])
 
   async function handleSave() {
     if (!content.trim() || submitting) return

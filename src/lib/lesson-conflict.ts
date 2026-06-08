@@ -81,13 +81,15 @@ export function formatBulkRepeatConflict(
   durationMin: number
 ): string {
   const time = formatStoredScheduleTimeRange(scheduledAt, durationMin)
-  return `등록하려는 반복 일정끼리 시간이 겹칩니다.\n코트 ${courtName} · ${time}`
+  return courtName
+    ? `등록하려는 반복 일정끼리 시간이 겹칩니다.\n코트 ${courtName} · ${time}`
+    : `등록하려는 반복 일정끼리 시간이 겹칩니다.\n${time}`
 }
 
 export function findScheduleConflict(
   proposed: ProposedLesson,
   coachId: string,
-  courtId: string,
+  courtId: string | null,
   courtName: string,
   existingLessons: ExistingLesson[],
   reservations: ExistingReservation[]
@@ -100,7 +102,7 @@ export function findScheduleConflict(
 
     const detail = formatLessonConflictDetail(lesson)
 
-    if (lesson.court_id === courtId) {
+    if (courtId && lesson.court_id === courtId) {
       return `같은 코트·시간대에 이미 레슨이 있습니다.\n${detail}`
     }
 

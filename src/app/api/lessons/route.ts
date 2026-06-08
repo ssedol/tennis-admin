@@ -39,9 +39,8 @@ async function getCallerProfile() {
 
 export async function POST(request: NextRequest) {
   const body = await request.json()
-  const { member_id, court_id, date, start_time, start_hour, duration_min, repeat_until, repeat_weekdays } = body as {
+  const { member_id, date, start_time, start_hour, duration_min, repeat_until, repeat_weekdays } = body as {
     member_id: string
-    court_id: string
     date: string
     start_time?: string
     start_hour?: number
@@ -57,7 +56,7 @@ export async function POST(request: NextRequest) {
     startSlot = start_hour * 3
   }
 
-  if (!member_id || !court_id || !date || startSlot == null || !duration_min) {
+  if (!member_id || !date || startSlot == null || !duration_min) {
     return NextResponse.json({ error: '필수 항목을 모두 입력하세요' }, { status: 400 })
   }
 
@@ -111,25 +110,11 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: '같은 조직의 회원만 등록할 수 있습니다' }, { status: 400 })
   }
 
-  const { data: court } = await admin
-    .from('courts')
-    .select('id, is_active, name')
-    .eq('id', court_id)
-    .eq('organization_id', profile.organization_id)
-    .single()
-
-  if (!court || !court.is_active) {
-    return NextResponse.json({ error: '코트를 찾을 수 없습니다' }, { status: 400 })
-  }
-
-  const courtName = court.name as string
-
   const rows = lessonDates.map((lessonDate) => ({
     organization_id: profile.organization_id,
     coach_id: coachId,
     created_by: profile.id,
     member_id,
-    court_id,
     scheduled_at: dateSlotToUtcIso(lessonDate, startSlot),
     duration_min,
     status: 'SCHEDULED' as const,
@@ -139,34 +124,19 @@ export async function POST(request: NextRequest) {
 
   const { data: existingLessons } = await admin
     .from('lesson_schedules')
-    .select(`
-      scheduled_at, duration_min, coach_id, court_id, status,
-      member:profiles!member_id(name),
-      coach:profiles!coach_id(name),
-      court:courts(name)
-    `)
+    .select('scheduled_at, duration_min, coach_id, status')
     .eq('organization_id', profile.organization_id)
     .neq('status', 'CANCELLED')
     .gte('scheduled_at', queryStart)
     .lt('scheduled_at', queryEnd)
-    .or(`coach_id.eq.${coachId},court_id.eq.${court_id}`)
+    .eq('coach_id', coachId)
 
-  const { data: reservations } = await admin
-    .from('court_reservations')
-    .select('start_at, end_at, title')
-    .eq('court_id', court_id)
-    .lt('start_at', queryEnd)
-    .gt('end_at', queryStart)
-
-  const lessonsList = (existingLessons ?? []) as {
-    scheduled_at: string
-    duration_min: number
-    coach_id: string
-    court_id: string | null
-    member?: { name: string } | { name: string }[] | null
-    coach?: { name: string } | { name: string }[] | null
-    court?: { name: string } | { name: string }[] | null
-  }[]
+  const lessonsList = (existingLessons ?? []).map((l) => ({
+    scheduled_at: l.scheduled_at as string,
+    duration_min: l.duration_min as number,
+    coach_id: l.coach_id as string,
+    court_id: null as string | null,
+  }))
 
   for (let i = 0; i < rows.length; i++) {
     for (let j = i + 1; j < rows.length; j++) {
@@ -177,13 +147,7 @@ export async function POST(request: NextRequest) {
         )
       ) {
         return NextResponse.json(
-          {
-            error: formatBulkRepeatConflict(
-              courtName,
-              rows[i].scheduled_at,
-              rows[i].duration_min
-            ),
-          },
+          { error: formatBulkRepeatConflict('', rows[i].scheduled_at, rows[i].duration_min) },
           { status: 409 }
         )
       }
@@ -191,14 +155,7 @@ export async function POST(request: NextRequest) {
   }
 
   for (const row of rows) {
-    const conflict = findScheduleConflict(
-      row,
-      coachId,
-      court_id,
-      courtName,
-      lessonsList,
-      reservations ?? []
-    )
+    const conflict = findScheduleConflict(row, coachId, null, '', lessonsList, [])
     if (conflict) {
       return NextResponse.json({ error: conflict }, { status: 409 })
     }
@@ -207,7 +164,7 @@ export async function POST(request: NextRequest) {
   const { data: lessons, error } = await admin
     .from('lesson_schedules')
     .insert(rows)
-    .select('id, organization_id, coach_id, member_id, court_id, scheduled_at, duration_min, status')
+    .select('id, organization_id, coach_id, member_id, scheduled_at, duration_min, status')
 
   if (error) return NextResponse.json({ error: error.message }, { status: 400 })
 

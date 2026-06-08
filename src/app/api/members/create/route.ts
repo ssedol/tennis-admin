@@ -49,8 +49,9 @@ export async function POST(request: NextRequest) {
     .eq('id', caller.id)
     .single()
 
-  if (!callerProfile || (callerProfile.role as string)?.toUpperCase() !== 'OWNER') {
-    return NextResponse.json({ error: '대표 계정만 등록 가능합니다' }, { status: 403 })
+  const callerRole = (callerProfile?.role as string)?.toUpperCase()
+  if (!callerProfile || (callerRole !== 'OWNER' && callerRole !== 'COACH')) {
+    return NextResponse.json({ error: '권한이 없습니다' }, { status: 403 })
   }
 
   const orgId = callerProfile.organization_id

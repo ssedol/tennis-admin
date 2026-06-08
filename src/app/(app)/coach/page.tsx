@@ -1,83 +1,10 @@
 import { LogoutButton } from '@/components/layout/LogoutButton'
-import { CoachClient } from '@/components/coach/CoachClient'
 import { createClient } from '@/lib/supabase/server'
 import { createClient as createAdminClient } from '@supabase/supabase-js'
 import { getKoreaYmd, koreaDateToUtcIso } from '@/lib/time-slots'
+import Link from 'next/link'
 
-type Period = 'today' | 'weekly' | 'monthly'
-
-function getPeriodRange(period: Period) {
-  const { y, m, d } = getKoreaYmd()
-
-  if (period === 'today') {
-    return {
-      start: koreaDateToUtcIso(y, m, d),
-      end: koreaDateToUtcIso(y, m, d + 1),
-    }
-  }
-
-  if (period === 'weekly') {
-    const dow = new Date(Date.UTC(y, m, d)).getUTCDay()
-    const mondayOffset = dow === 0 ? -6 : 1 - dow
-    const startDay = d + mondayOffset
-    return {
-      start: koreaDateToUtcIso(y, m, startDay),
-      end: koreaDateToUtcIso(y, m, startDay + 7),
-    }
-  }
-
-  return {
-    start: koreaDateToUtcIso(y, m, 1),
-    end: koreaDateToUtcIso(y, m + 1, 1),
-  }
-}
-
-function getPeriodMeta(period: Period, count: number) {
-  const { y, m, d } = getKoreaYmd()
-  const koreaToday = new Date(Date.UTC(y, m, d))
-
-  if (period === 'today') {
-    const dayLabel = koreaToday.toLocaleDateString('ko-KR', { month: 'long', day: 'numeric', timeZone: 'UTC' })
-    const weekday = koreaToday.toLocaleDateString('ko-KR', { weekday: 'long', timeZone: 'UTC' })
-    return {
-      title: `오늘 · ${dayLabel}`,
-      sub: `${weekday} · 레슨 ${count}건`,
-    }
-  }
-
-  if (period === 'weekly') {
-    const dow = new Date(Date.UTC(y, m, d)).getUTCDay()
-    const mondayOffset = dow === 0 ? -6 : 1 - dow
-    const start = new Date(Date.UTC(y, m, d + mondayOffset))
-    const end = new Date(Date.UTC(y, m, d + mondayOffset + 6))
-    const fmt = (dt: Date) =>
-      dt.toLocaleDateString('ko-KR', { month: 'long', day: 'numeric', timeZone: 'UTC' })
-    return {
-      title: '이번 주',
-      sub: `${fmt(start)} — ${fmt(end)} · 레슨 ${count}건`,
-    }
-  }
-
-  const monthLabel = koreaToday.toLocaleDateString('ko-KR', {
-    year: 'numeric',
-    month: 'long',
-    timeZone: 'UTC',
-  })
-  return {
-    title: monthLabel,
-    sub: `레슨 ${count}건`,
-  }
-}
-
-export default async function CoachPage({
-  searchParams,
-}: {
-  searchParams: Promise<{ period?: string }>
-}) {
-  const { period: rawPeriod } = await searchParams
-  const period: Period =
-    rawPeriod === 'weekly' || rawPeriod === 'monthly' ? rawPeriod : 'today'
-
+export default async function CoachPage() {
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
 
@@ -89,52 +16,30 @@ export default async function CoachPage({
 
   const { data: profile } = await admin
     .from('profiles')
-    .select('id, organization_id')
+    .select('id, name, organization_id')
     .eq('id', user!.id)
     .single()
 
-  const orgId = profile?.organization_id
-  const coachId = profile?.id
-  const { start, end } = getPeriodRange(period)
+  const { y, m, d } = getKoreaYmd()
+  const todayStart = koreaDateToUtcIso(y, m, d)
+  const todayEnd = koreaDateToUtcIso(y, m, d + 1)
 
-  const [membersRes, courtsRes, lessonsRes] = await Promise.all([
-    admin
-      .from('profiles')
-      .select('id, name')
-      .eq('organization_id', orgId!)
-      .eq('role', 'MEMBER')
-      .order('name'),
-    admin
-      .from('courts')
-      .select('id, name')
-      .eq('organization_id', orgId!)
-      .eq('is_active', true)
-      .order('sort_order'),
+  const [{ count: todayCount }, { count: memberCount }] = await Promise.all([
     admin
       .from('lesson_schedules')
-      .select(`
-        id, scheduled_at, duration_min, status, created_by,
-        member:profiles!member_id(name),
-        court:courts(name)
-      `)
-      .eq('coach_id', coachId!)
-      .gte('scheduled_at', start)
-      .lt('scheduled_at', end)
-      .order('scheduled_at'),
+      .select('id', { count: 'exact', head: true })
+      .eq('coach_id', profile!.id)
+      .gte('scheduled_at', todayStart)
+      .lt('scheduled_at', todayEnd),
+    admin
+      .from('profiles')
+      .select('id', { count: 'exact', head: true })
+      .eq('organization_id', profile!.organization_id)
+      .eq('role', 'MEMBER'),
   ])
 
-  type LessonRow = {
-    id: string
-    scheduled_at: string
-    duration_min: number
-    status: string
-    created_by: string
-    member: { name: string } | { name: string }[] | null
-    court: { name: string } | { name: string }[] | null
-  }
-
-  const lessons = (lessonsRes.data ?? []) as unknown as LessonRow[]
-  const meta = getPeriodMeta(period, lessons.length)
+  const today = new Date(Date.UTC(y, m, d))
+  const dateLabel = today.toLocaleDateString('ko-KR', { month: 'long', day: 'numeric', weekday: 'long', timeZone: 'UTC' })
 
   return (
     <main className="max-w-screen-sm mx-auto px-5 pb-10">
@@ -146,15 +51,53 @@ export default async function CoachPage({
         <LogoutButton />
       </header>
 
-      <CoachClient
-        period={period}
-        title={meta.title}
-        sub={meta.sub}
-        members={membersRes.data ?? []}
-        courts={courtsRes.data ?? []}
-        lessons={lessons}
-        coachProfileId={coachId!}
-      />
+      <div className="mt-2 mb-8">
+        <p className="text-sm text-muted-foreground">{dateLabel}</p>
+        <h1 className="text-2xl font-bold tracking-tight mt-1">
+          안녕하세요, {profile?.name} 코치님
+        </h1>
+      </div>
+
+      {/* 오늘 요약 */}
+      <div className="grid grid-cols-2 gap-3 mb-8">
+        <div className="bg-card border border-border rounded-xl p-4">
+          <p className="text-xs text-muted-foreground mb-1">오늘 레슨</p>
+          <p className="text-2xl font-bold">{todayCount ?? 0}<span className="text-sm font-normal text-muted-foreground ml-1">건</span></p>
+        </div>
+        <div className="bg-card border border-border rounded-xl p-4">
+          <p className="text-xs text-muted-foreground mb-1">전체 회원</p>
+          <p className="text-2xl font-bold">{memberCount ?? 0}<span className="text-sm font-normal text-muted-foreground ml-1">명</span></p>
+        </div>
+      </div>
+
+      {/* 관리 메뉴 */}
+      <div className="space-y-3">
+        <Link
+          href="/coach/lessons"
+          className="flex items-center justify-between w-full bg-card border border-border rounded-xl p-5 hover:bg-secondary/30 transition-colors"
+        >
+          <div>
+            <p className="font-semibold">레슨 관리</p>
+            <p className="text-sm text-muted-foreground mt-0.5">레슨 일정 확인 및 등록</p>
+          </div>
+          <svg className="w-5 h-5 text-muted-foreground" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
+            <path d="M9 18l6-6-6-6" />
+          </svg>
+        </Link>
+
+        <Link
+          href="/coach/members"
+          className="flex items-center justify-between w-full bg-card border border-border rounded-xl p-5 hover:bg-secondary/30 transition-colors"
+        >
+          <div>
+            <p className="font-semibold">회원 관리</p>
+            <p className="text-sm text-muted-foreground mt-0.5">회원 등록 및 정보 관리</p>
+          </div>
+          <svg className="w-5 h-5 text-muted-foreground" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
+            <path d="M9 18l6-6-6-6" />
+          </svg>
+        </Link>
+      </div>
     </main>
   )
 }

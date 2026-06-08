@@ -9,7 +9,7 @@ const ROLE_REDIRECTS: Record<DevRole, string> = {
   MEMBER: '/member',
 }
 
-const PUBLIC_PATHS = ['/login', '/auth', '/api', '/change-password']
+const PUBLIC_PATHS = ['/login', '/signup', '/auth', '/api', '/change-password']
 
 function isPublic(pathname: string) {
   return PUBLIC_PATHS.some((p) => pathname.startsWith(p))

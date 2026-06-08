@@ -5,7 +5,6 @@ import { cookies } from 'next/headers'
 import { getSupabaseEnv } from '@/lib/supabase/env'
 
 const BUCKET = 'lesson-videos'
-const ALLOWED_TYPES = new Set(['video/mp4', 'video/quicktime', 'video/webm'])
 
 async function getCallerProfile() {
   const { url, anonKey } = getSupabaseEnv()
@@ -30,7 +29,7 @@ async function getCallerProfile() {
   return profile
 }
 
-// Step 1: 브라우저가 서명 URL을 요청 (JSON body, 파일 없음)
+// Step 3: 브라우저가 Supabase에 직접 업로드 완료 후 DB 레코드 저장
 export async function POST(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
     const { id: lessonId } = await params
@@ -40,6 +39,12 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     const role = (profile.role as string).toUpperCase()
     if (role !== 'MEMBER' && role !== 'COACH') {
       return NextResponse.json({ error: '권한 없음' }, { status: 403 })
+    }
+
+    const body = await request.json() as { storagePath?: string; durationSec?: number | null }
+
+    if (!body.storagePath) {
+      return NextResponse.json({ error: '스토리지 경로가 필요합니다' }, { status: 400 })
     }
 
     const { url } = getSupabaseEnv()
@@ -56,40 +61,62 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     if (!lesson || lesson.organization_id !== profile.organization_id) {
       return NextResponse.json({ error: '권한 없음' }, { status: 403 })
     }
-    if (role === 'MEMBER' && lesson.member_id !== profile.id) {
-      return NextResponse.json({ error: '본인 레슨에만 영상을 업로드할 수 있습니다' }, { status: 403 })
-    }
-    if (role === 'COACH' && lesson.coach_id !== profile.id) {
-      return NextResponse.json({ error: '본인 레슨에만 영상을 업로드할 수 있습니다' }, { status: 403 })
-    }
 
-    const body = await request.json() as { filename?: string; contentType?: string }
-
-    if (!body.contentType || !ALLOWED_TYPES.has(body.contentType)) {
-      return NextResponse.json({ error: 'MP4, MOV, WEBM 형식만 업로드할 수 있습니다' }, { status: 400 })
+    // storagePath가 이 레슨/조직에 속하는지 검증
+    const expectedPrefix = `${lesson.organization_id}/${lessonId}/`
+    if (!body.storagePath.startsWith(expectedPrefix)) {
+      return NextResponse.json({ error: '잘못된 스토리지 경로입니다' }, { status: 400 })
     }
 
-    const ext = (body.filename ?? 'video').split('.').pop()?.toLowerCase() || 'mp4'
-    const storagePath = `${lesson.organization_id}/${lessonId}/${crypto.randomUUID()}.${ext}`
+    const durationSec = typeof body.durationSec === 'number' && body.durationSec > 0
+      ? Math.floor(body.durationSec)
+      : null
 
-    const { data: signedData, error: signedError } = await admin.storage
-      .from(BUCKET)
-      .createSignedUploadUrl(storagePath)
+    // 본인이 이미 올린 영상이 있으면 교체 (uploader_id로 필터)
+    const { data: existing } = await admin
+      .from('videos')
+      .select('id, storage_path')
+      .eq('lesson_id', lessonId)
+      .eq('uploader_id', profile.id)
+      .maybeSingle()
 
-    if (signedError || !signedData) {
-      return NextResponse.json(
-        { error: signedError?.message ?? '서명 URL 생성 실패 — lesson-videos 버킷이 Supabase에 존재하는지 확인하세요' },
-        { status: 400 }
-      )
+    let videoId: string
+
+    if (existing) {
+      // 기존 파일 삭제 후 레코드 업데이트
+      await admin.storage.from(BUCKET).remove([existing.storage_path])
+      const { data: updated, error: updateError } = await admin
+        .from('videos')
+        .update({ storage_path: body.storagePath, duration_sec: durationSec })
+        .eq('id', existing.id)
+        .select('id')
+        .single()
+
+      if (updateError) return NextResponse.json({ error: updateError.message }, { status: 400 })
+      videoId = updated.id
+    } else {
+      const { data: inserted, error: insertError } = await admin
+        .from('videos')
+        .insert({ lesson_id: lessonId, uploader_id: profile.id, storage_path: body.storagePath, duration_sec: durationSec })
+        .select('id')
+        .single()
+
+      if (insertError) return NextResponse.json({ error: insertError.message }, { status: 400 })
+      videoId = inserted.id
     }
+
+    const { data: signed } = await admin.storage.from(BUCKET).createSignedUrl(body.storagePath, 3600)
 
     return NextResponse.json({
-      signedUrl: signedData.signedUrl,
-      token: signedData.token,
-      storagePath,
+      video: {
+        id: videoId,
+        storage_path: body.storagePath,
+        duration_sec: durationSec,
+        url: signed?.signedUrl ?? null,
+      },
     })
   } catch (err) {
-    console.error('[video/upload] error:', err)
+    console.error('[video/upload/confirm] error:', err)
     return NextResponse.json(
       { error: err instanceof Error ? err.message : '오류가 발생했습니다' },
       { status: 500 }

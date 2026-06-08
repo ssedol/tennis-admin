@@ -4,6 +4,9 @@ type Props = {
   open: boolean
   title?: string
   description: string
+  confirmLabel?: string
+  confirmingLabel?: string
+  confirmVariant?: 'danger' | 'primary'
   confirming?: boolean
   onCancel: () => void
   onConfirm: () => void
@@ -13,11 +16,19 @@ export function DeleteConfirmModal({
   open,
   title = '레슨을 삭제할까요?',
   description,
+  confirmLabel = '삭제',
+  confirmingLabel,
+  confirmVariant = 'danger',
   confirming = false,
   onCancel,
   onConfirm,
 }: Props) {
   if (!open) return null
+
+  const btnClass =
+    confirmVariant === 'primary'
+      ? 'bg-volta hover:opacity-90 text-black'
+      : 'bg-red-500 hover:bg-red-600 text-white'
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center px-4">
@@ -43,9 +54,9 @@ export function DeleteConfirmModal({
             type="button"
             onClick={onConfirm}
             disabled={confirming}
-            className="flex-1 py-2.5 rounded-xl bg-red-500 hover:bg-red-600 text-white text-sm font-semibold transition-colors disabled:opacity-50"
+            className={`flex-1 py-2.5 rounded-xl text-sm font-semibold transition-colors disabled:opacity-50 ${btnClass}`}
           >
-            {confirming ? '삭제 중...' : '삭제'}
+            {confirming ? (confirmingLabel ?? `${confirmLabel} 중...`) : confirmLabel}
           </button>
         </div>
       </div>

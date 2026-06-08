@@ -1,6 +1,9 @@
 'use client'
 
+import { Suspense } from 'react'
 import { useActionState } from 'react'
+import Link from 'next/link'
+import { useSearchParams } from 'next/navigation'
 import { devQuickLoginAction, loginAction } from './actions'
 
 const IS_DEV = process.env.NODE_ENV === 'development'
@@ -10,6 +13,12 @@ const DEV_ROLES = [
   { role: 'COACH' as const, label: '코치' },
   { role: 'MEMBER' as const, label: '회원' },
 ]
+
+function SignupSuccessBanner() {
+  const searchParams = useSearchParams()
+  if (searchParams.get('signup') !== 'success') return null
+  return <p className="text-xs text-green-500">가입이 완료됐어요. 로그인해주세요.</p>
+}
 
 export default function LoginPage() {
   const [error, action, pending] = useActionState(loginAction, null)
@@ -69,6 +78,10 @@ export default function LoginPage() {
             <p className="text-xs text-destructive">{displayError}</p>
           )}
 
+          <Suspense fallback={null}>
+            <SignupSuccessBanner />
+          </Suspense>
+
           <button
             type="submit"
             disabled={isPending}
@@ -80,8 +93,12 @@ export default function LoginPage() {
       </div>
 
       <p className="mt-5 text-xs text-muted-foreground text-center">
-        계정이 없으신가요?<br />
-        대표 또는 코치에게 문의해주세요.
+        계정이 없으신가요?{' '}
+        <Link href="/signup" className="text-volta underline underline-offset-2">
+          코치로 시작하기
+        </Link>
+        <br />
+        <span className="text-muted-foreground/60">회원은 코치에게 문의하세요</span>
       </p>
 
       {/* 개발 환경 전용 */}
