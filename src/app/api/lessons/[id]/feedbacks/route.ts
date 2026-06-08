@@ -4,6 +4,7 @@ import { createServerClient } from '@supabase/ssr'
 import { cookies } from 'next/headers'
 import { getSupabaseEnv } from '@/lib/supabase/env'
 import { canViewLessonFeedback, canWriteLessonFeedback, fetchLessonForFeedback } from '@/lib/lesson-access'
+import { sendPushToUser } from '@/lib/send-push'
 
 async function getCallerProfile() {
   const { url, anonKey } = getSupabaseEnv()
@@ -153,6 +154,31 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     .select('id, content, created_at')
     .single()
 
+  // 알림 전송 공통 로직
+  async function notifyRecipient(feedbackId: string) {
+    const isCoach = role === 'COACH'
+    const recipientId = isCoach ? lesson!.member_id : lesson!.coach_id
+    const recipientRole = isCoach ? 'member' : 'coach'
+    const message = isCoach
+      ? `${profile!.name} 코치님이 피드백을 남겼습니다`
+      : `${profile!.name} 회원이 피드백을 남겼습니다`
+
+    await Promise.all([
+      admin.from('notifications').insert({
+        user_id: recipientId,
+        type: 'FEEDBACK_ADDED',
+        reference_id: lessonId,
+        message,
+      }),
+      sendPushToUser(admin, recipientId, {
+        title: '새 피드백',
+        body: message,
+        url: `/${recipientRole}/lessons/${lessonId}`,
+      }),
+    ])
+    return feedbackId
+  }
+
   if (withAuthor.error) {
     // author_id 컬럼 없을 때 fallback
     const legacy = await admin
@@ -161,6 +187,8 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       .select('id, content, created_at')
       .single()
     if (legacy.error) return NextResponse.json({ error: legacy.error.message }, { status: 400 })
+
+    await notifyRecipient(legacy.data.id).catch(() => {})
 
     return NextResponse.json({
       feedback: {
@@ -171,6 +199,8 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       },
     })
   }
+
+  await notifyRecipient(withAuthor.data.id).catch(() => {})
 
   return NextResponse.json({
     feedback: {

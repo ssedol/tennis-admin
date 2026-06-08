@@ -1,4 +1,6 @@
 import { LogoutButton } from '@/components/layout/LogoutButton'
+import { NotificationBell } from '@/components/layout/NotificationBell'
+import { PushSubscriber } from '@/components/layout/PushSubscriber'
 import { createClient } from '@/lib/supabase/server'
 import { createClient as createAdminClient } from '@supabase/supabase-js'
 import { getKoreaYmd, koreaDateToUtcIso } from '@/lib/time-slots'
@@ -48,8 +50,12 @@ export default async function CoachPage() {
           <span className="w-2 h-2 rounded-full bg-volta" />
           <span className="font-semibold text-[15px]">테니스 관리</span>
         </div>
-        <LogoutButton />
+        <div className="flex items-center gap-1">
+          <NotificationBell role="coach" />
+          <LogoutButton />
+        </div>
       </header>
+      <PushSubscriber />
 
       <div className="mt-2 mb-8">
         <p className="text-sm text-muted-foreground">{dateLabel}</p>

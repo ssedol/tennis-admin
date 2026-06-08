@@ -1,4 +1,6 @@
 import { LogoutButton } from '@/components/layout/LogoutButton'
+import { NotificationBell } from '@/components/layout/NotificationBell'
+import { PushSubscriber } from '@/components/layout/PushSubscriber'
 import { CoachClient } from '@/components/coach/CoachClient'
 import { createClient } from '@/lib/supabase/server'
 import { createClient as createAdminClient } from '@supabase/supabase-js'
@@ -136,8 +138,12 @@ export default async function CoachLessonsPage({
           </Link>
           <h1 className="text-lg font-bold tracking-tight">레슨 관리</h1>
         </div>
-        <LogoutButton />
+        <div className="flex items-center gap-1">
+          <NotificationBell role="coach" />
+          <LogoutButton />
+        </div>
       </header>
+      <PushSubscriber />
 
       <CoachClient
         period={period}
