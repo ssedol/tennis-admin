@@ -9,6 +9,14 @@ export const metadata: Metadata = {
   title: '테니스 관리',
   description: '테니스 레슨 일정 및 피드백 관리',
   manifest: '/manifest.json',
+  appleWebApp: {
+    capable: true,
+    statusBarStyle: 'black-translucent',
+    title: '테니스 관리',
+  },
+  icons: {
+    apple: '/icon-192.png',
+  },
 }
 
 export const viewport: Viewport = {
